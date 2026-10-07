@@ -161,6 +161,8 @@ body { color: var(--color-text); }
         .navfade-enter-from, .navfade-leave-to { opacity: 0; transform: translateY(-4px); }
         /* 输入中：三个跳动的点 */
         @keyframes typingDot { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
+        @keyframes spinSlow { to { transform: rotate(360deg); } }
+        @keyframes bobFloat { 0%, 100% { transform: translateY(0); opacity: 0.55; } 50% { transform: translateY(-3px); opacity: 1; } }
         .typing-dot { width: 6px; height: 6px; border-radius: 9999px; display: inline-block; animation: typingDot 1.1s infinite ease-in-out; }
 
         .intro-overlay { position: fixed; inset: 0; z-index: 100; background: #ffffff; display: flex; align-items: center; justify-content: center; }
@@ -451,17 +453,34 @@ body { color: var(--color-text); }
               <!-- 建筑卡片列表：纵向滚动，每张卡一栋建筑 -->
               <div class="flex-1 overflow-y-auto px-4 py-2 space-y-2 min-h-0" ref="homeListEl">
                     <div v-for="session in visibleSessions" :key="session.id" :ref="el => setCardRef(session.id, el)"
-                         @click="openSession(session.id)"
-                         @contextmenu.prevent="hideSession(session.id)"
-                         @touchstart="cardTouchStart($event, session.id)" @touchend="cardTouchEnd" @touchmove="cardTouchEnd"
-                         class="p-4 rounded-xl bg-surface/60 border border-border/40 cursor-pointer hover:bg-surface transition select-none relative"
-                         :class="{ 'home-card-highlight': highlightId === session.id }">
-                        <span class="font-medium text-text">{{ session.name }}</span>
-                        <span v-if="session.type === 'group'" class="absolute top-2 right-2 text-[9px] tracking-widest text-muted bg-bg/60 px-1.5 py-0.5 rounded">群 · {{ session.members.length }}</span>
-                        <svg v-if="unreadOf(session) > 0" viewBox="0 0 24 24" fill="currentColor" class="absolute right-2 bottom-2 w-5 h-5" style="color:var(--nav-icon-color)">
-                          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                        </svg>
-                    </div>
+     @click="openSession(session.id)"
+     @contextmenu.prevent="hideSession(session.id)"
+     @touchstart="cardTouchStart($event, session.id)" @touchend="cardTouchEnd" @touchmove="cardTouchEnd"
+     class="flex items-center gap-3 px-3 py-3 rounded-2xl bg-surface/60 border border-border/40 cursor-pointer hover:bg-surface transition select-none relative"
+     :class="{ 'home-card-highlight': highlightId === session.id }">
+    <!-- 头像 -->
+    <div class="shrink-0 w-12 h-12 rounded-xl overflow-hidden bg-surface border border-border/50 flex items-center justify-center">
+        <img v-if="session.avatar" :src="session.avatar" class="w-full h-full object-cover">
+        <span v-else class="text-[18px] text-muted serif-text">{{ (session.name || '?').charAt(0) }}</span>
+    </div>
+    <!-- 中间 -->
+    <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-1.5 mb-0.5">
+            <span class="font-medium text-[14px] text-text truncate">{{ session.name }}</span>
+            <span v-if="session.type === 'group'" class="text-[9px] tracking-widest text-muted bg-bg/60 px-1.5 py-0.5 rounded shrink-0">群 · {{ session.members.length }}</span>
+        </div>
+        <div class="text-[12px] text-muted truncate">{{ lastMessagePreview(session) || '暂无消息' }}</div>
+    </div>
+    <!-- 右侧 -->
+    <div class="shrink-0 flex flex-col items-end gap-1.5">
+        <span class="text-[10px] text-muted tabular-nums">{{ formatSessionTime(session.messages.length ? session.messages[session.messages.length - 1].timestamp : 0) }}</span>
+        <span v-if="unreadOf(session) > 0"
+              class="min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] text-white flex items-center justify-center font-medium"
+              style="background: var(--nav-icon-color);">
+            {{ unreadOf(session) > 99 ? '99+' : unreadOf(session) }}
+        </span>
+    </div>
+</div>
                     <div v-if="!visibleSessions.length" class="text-center text-xs text-muted/60 py-8">主屏暂无聊天</div>
               </div>
 
@@ -525,28 +544,34 @@ body { color: var(--color-text); }
             </div>
 
             <!-- 照片卡 -->
-            <label class="block relative w-full rounded-2xl overflow-hidden mb-4 cursor-pointer group" style="aspect-ratio: 4/3; background: rgba(0,0,0,0.04);">
-                <img v-if="settings.spacePhoto" :src="settings.spacePhoto" class="absolute inset-0 w-full h-full object-cover">
-                <div v-else class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted/50">
-                    <i data-lucide="image" class="w-6 h-6"></i>
-                    <div class="text-[12px] tracking-widest">收藏，和你有关的瞬间</div>
-                    <div class="text-[10px] opacity-70">轻点放入一张照片</div>
+                        <!-- 照片卡（相册轮播） -->
+            <label class="block relative w-full rounded-2xl overflow-hidden mb-4 cursor-pointer group" style="aspect-ratio: 16/9; background: rgba(0,0,0,0.04);">
+                <img v-if="currentSpacePhoto" :src="currentSpacePhoto" class="absolute inset-0 w-full h-full object-cover">
+                <div v-else class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted/50">
+                    <i data-lucide="image" class="w-5 h-5"></i>
+                    <div class="text-[11px] tracking-widest">收藏，和你有关的瞬间</div>
+                    <div class="text-[9px] opacity-70">轻点放入一张照片（可多选）</div>
                 </div>
-                <input type="file" accept="image/*" class="hidden" @change="uploadSpacePhoto">
-                <button v-if="settings.spacePhoto" @click.prevent.stop="settings.spacePhoto = ''; debouncedSave()"
-                        class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/40 text-white text-xs flex items-center justify-center">✕</button>
+                <input type="file" accept="image/*" multiple class="hidden" @change="uploadSpacePhoto">
+                <div v-if="(settings.spacePhotos || []).length > 1"
+                     class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">
+                    <span v-for="(_, i) in settings.spacePhotos" :key="i"
+                          @click.prevent.stop="settings.spacePhotoIndex = i; debouncedSave();"
+                          class="w-1.5 h-1.5 rounded-full cursor-pointer transition-all"
+                          :class="i === (settings.spacePhotoIndex % settings.spacePhotos.length) ? 'bg-white w-3' : 'bg-white/50'"></span>
+                </div>
             </label>
             <!-- 头像行 -->
             <div class="flex items-center justify-between mb-4 px-1">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="flex -space-x-3 shrink-0">
-                        <div class="w-10 h-10 rounded-full border-2 border-white overflow-hidden bg-surface shadow-sm">
+                                        <div class="flex -space-x-4 shrink-0">
+                        <div class="w-16 h-16 rounded-full border-2 border-white overflow-hidden bg-surface shadow-sm">
                             <img v-if="profiles.me.avatar" :src="profiles.me.avatar" class="w-full h-full object-cover">
-                            <span v-else class="w-full h-full flex items-center justify-center text-[12px] text-muted serif-text">{{ (profiles.me.name || '我').charAt(0) }}</span>
+                            <span v-else class="w-full h-full flex items-center justify-center text-[20px] text-muted serif-text">{{ (profiles.me.name || '我').charAt(0) }}</span>
                         </div>
-                        <div class="w-10 h-10 rounded-full border-2 border-white overflow-hidden bg-surface shadow-sm">
+                        <div class="w-16 h-16 rounded-full border-2 border-white overflow-hidden bg-surface shadow-sm">
                             <img v-if="currentSession?.avatar" :src="currentSession.avatar" class="w-full h-full object-cover">
-                            <span v-else class="w-full h-full flex items-center justify-center text-[12px] text-muted serif-text">{{ (currentSession?.name || '?').charAt(0) }}</span>
+                            <span v-else class="w-full h-full flex items-center justify-center text-[20px] text-muted serif-text">{{ (currentSession?.name || '?').charAt(0) }}</span>
                         </div>
                     </div>
                     <div class="flex flex-col min-w-0">
@@ -728,15 +753,9 @@ body { color: var(--color-text); }
 
     <!-- 未拆且未过期红包 -->
     <div v-else-if="msg.sender === 'system' && msg.type === 'redpacket' && msg.status === 'pending' && msg.expireAt > Date.now()" @click="openRedpacket(msg)" class="flex justify-center mb-4 cursor-pointer relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex flex-col gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-       <button @click.stop="msgMenuQuote2" class="px-2.5 py-1 text-[12px] text-white hover:bg-white/10 rounded">引用</button>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="w-56 rounded-xl overflow-hidden shadow-md border border-red-300/50" style="background:linear-gradient(135deg,#f43f5e,#e11d48);">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="w-56 rounded-xl overflow-hidden shadow-md border border-red-300/50" style="background:linear-gradient(135deg,#f43f5e,#e11d48);">
             <div class="px-4 py-3 text-white text-center">
                 <div class="text-lg mb-1">🧧</div>
                 <div class="text-[13px] font-medium tracking-wider">{{ msg.content }}</div>
@@ -747,14 +766,9 @@ body { color: var(--color-text); }
 
     <!-- 已过期红包 -->
     <div v-else-if="msg.sender === 'system' && msg.type === 'redpacket' && msg.status === 'pending' && msg.expireAt <= Date.now()" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="w-56 rounded-xl overflow-hidden shadow-md border border-border/40 bg-surface opacity-60">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="w-56 rounded-xl overflow-hidden shadow-md border border-border/40 bg-surface opacity-60">
             <div class="px-4 py-3 text-center">
                 <div class="text-sm mb-1">🧧</div>
                 <div class="text-[13px] font-medium text-muted tracking-wider">{{ msg.content }}</div>
@@ -765,14 +779,9 @@ body { color: var(--color-text); }
 
     <!-- 已拆红包 -->
     <div v-else-if="msg.sender === 'system' && msg.type === 'redpacket' && msg.status === 'opened'" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="w-56 rounded-xl overflow-hidden shadow-md border border-border/40 bg-surface">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="w-56 rounded-xl overflow-hidden shadow-md border border-border/40 bg-surface">
             <div class="px-4 py-3 text-center">
                 <div class="text-sm mb-1">🎁</div>
                 <div class="text-lg font-bold text-text">¥{{ msg.amount.toFixed(2) }}</div>
@@ -784,14 +793,9 @@ body { color: var(--color-text); }
 
     <!-- 问卷卡片 -->
 <div v-else-if="msg.type === 'survey'" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="w-64 rounded-xl overflow-hidden shadow-md border border-border/50 bg-surface">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="w-64 rounded-xl overflow-hidden shadow-md border border-border/50 bg-surface">
             <div class="px-4 py-2.5 text-[11px] tracking-widest text-muted border-b border-border/40">问卷 · {{ msg.status === 'answered' ? (msg.declined ? 'TA未作答' : '已作答') : '待TA作答' }}</div>
             <div class="px-4 py-3 space-y-2">
                 <div v-for="(q, qi) in msg.questions" :key="qi" class="text-[12px]">
@@ -804,13 +808,9 @@ body { color: var(--color-text); }
 
     <!-- 问卷作答结果 -->
 <div v-else-if="msg.type === 'surveyResult'" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+    
         <div class="w-64 rounded-xl overflow-hidden shadow-md border border-border/50 bg-surface">
             <div class="px-4 py-2.5 text-[11px] tracking-widest text-muted border-b border-border/40">问卷作答</div>
             <div v-if="msg.declined" class="px-4 py-5 text-center text-[12px] text-muted/70 tracking-wider">TA选择不答</div>
@@ -874,14 +874,9 @@ body { color: var(--color-text); }
 
     <!-- 我发的红包（靠右） -->
 <div v-else-if="msg.sender === 'me' && msg.type === 'redpacket'" class="mb-4 flex justify-end group relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="flex items-center gap-2">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="flex items-center gap-2">
             <button @click="deleteMsg(msg.id)" class="opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-red-500 p-1 bg-surface/70 rounded-full shadow-sm"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
             <div class="w-56 rounded-xl overflow-hidden shadow-md border border-red-300/50" style="background:linear-gradient(135deg,#f43f5e,#e11d48);">
                 <div class="px-4 py-3 text-white">
@@ -900,14 +895,9 @@ body { color: var(--color-text); }
 
     <!-- 群聊抢红包 -->
 <div v-else-if="msg.type === 'grabPacket'" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-        <div class="w-60 rounded-xl overflow-hidden shadow-md border border-red-300/50 bg-surface">
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+            <div class="w-60 rounded-xl overflow-hidden shadow-md border border-red-300/50 bg-surface">
             <div class="px-4 py-3 text-center" style="background:linear-gradient(135deg,#f43f5e,#e11d48);color:#fff;">
                 <div class="text-lg mb-1">🧧</div>
                 <div class="text-[13px] font-medium tracking-wider">抢红包</div>
@@ -936,14 +926,9 @@ body { color: var(--color-text); }
 
 <!-- 吐槽卡片 -->
 <div v-else-if="msg.type === 'tease'" class="flex justify-center mb-4 relative"
-     @contextmenu.prevent="openMsgMenu(msg)"
-     @touchstart="onMsgPressStart(msg)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
-    <div v-if="msgMenu.show && msgMenu.msg && msgMenu.msg.id === msg.id"
-         class="msg-menu-bar absolute flex gap-0.5 bg-[#2c2c2c] rounded-lg px-1 py-1 shadow-xl z-[50] right-0"
-         style="bottom: 100%; margin-bottom: 6px;" @click.stop>
-        <button @click.stop="msgMenuDelete" class="px-2.5 py-1 text-[12px] text-red-400 hover:bg-white/10 rounded">删除</button>
-    </div>
-    <div @click="openTeaseReply(msg)" 
+     @contextmenu.prevent="openMsgMenu(msg, $event)"
+     @touchstart="onMsgPressStart(msg, $event)" @touchend="onMsgPressEnd" @touchmove="onMsgPressEnd">
+        <div @click="openTeaseReply(msg)" 
          class="w-72 rounded-2xl overflow-hidden shadow-md border border-border/60 bg-surface cursor-pointer hover:shadow-lg transition-all duration-300 p-4">
         <div v-if="msg.teaseCategory" class="text-[10px] tracking-widest text-muted/60 mb-1">
             {{ msg.teaseCategory }}
@@ -1276,62 +1261,36 @@ body { color: var(--color-text); }
                    @input="e => { getFreeComposeSettings(currentSession.id).prob = e.target.value / 100; debouncedSave(); }"
                    class="w-full" style="accent-color: var(--nav-icon-color);">
         </div>
-        <!-- 三源语料 -->
+                <!-- 语料来源（书册级，每会话独立） -->
         <div class="pt-1 border-t border-border/30 space-y-2">
-            <div class="text-[11px] text-muted tracking-widest">语料来源</div>
-            <!-- 自定义字卡 -->
-            <div class="flex items-center justify-between">
-                <span class="text-[12px] text-text">自定义字卡</span>
-                <div class="flex items-center gap-2">
-                    <span class="text-[11px] text-muted w-8 text-right">{{ getFreeComposeSettings(currentSession.id).weightCustom }}</span>
-                    <button @click="getFreeComposeSettings(currentSession.id).srcCustom = !getFreeComposeSettings(currentSession.id).srcCustom; debouncedSave();"
-                            class="w-9 h-5 rounded-full relative transition-colors shrink-0"
-                            :class="getFreeComposeSettings(currentSession.id).srcCustom ? 'bg-text' : 'bg-border'">
-                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-surface rounded-full transition-transform"
-                             :class="getFreeComposeSettings(currentSession.id).srcCustom ? 'translate-x-4' : 'translate-x-0'"></div>
+            <div class="text-[11px] text-muted tracking-widest mb-1">语料来源</div>
+            <template v-for="grp in replySettingsGroups" :key="grp.catName">
+                <div class="flex items-center justify-between mt-2 mb-1 px-1">
+                    <span class="text-[10px] text-muted/70">{{ grp.catName }}</span>
+                    <button @click="toggleAllFreeComposeInCategory(grp.catName, grp.boxes)"
+                            class="text-[10px] text-muted hover:text-text">
+                        {{ grp.boxes.some(b => getFreeComposeWeight(b) > 0) ? '全不选' : '全选' }}
                     </button>
                 </div>
-            </div>
-            <input v-if="getFreeComposeSettings(currentSession.id).srcCustom" type="range" min="0" max="100"
-                   :value="getFreeComposeSettings(currentSession.id).weightCustom"
-                   @input="e => { getFreeComposeSettings(currentSession.id).weightCustom = Number(e.target.value); debouncedSave(); }"
-                   class="w-full" style="accent-color: var(--nav-icon-color);">
-            <!-- 默认聊天字卡 -->
-            <div class="flex items-center justify-between">
-                <span class="text-[12px] text-text">默认聊天字卡</span>
-                <div class="flex items-center gap-2">
-                    <span class="text-[11px] text-muted w-8 text-right">{{ getFreeComposeSettings(currentSession.id).weightDefault }}</span>
-                    <button @click="getFreeComposeSettings(currentSession.id).srcDefault = !getFreeComposeSettings(currentSession.id).srcDefault; debouncedSave();"
-                            class="w-9 h-5 rounded-full relative transition-colors shrink-0"
-                            :class="getFreeComposeSettings(currentSession.id).srcDefault ? 'bg-text' : 'bg-border'">
-                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-surface rounded-full transition-transform"
-                             :class="getFreeComposeSettings(currentSession.id).srcDefault ? 'translate-x-4' : 'translate-x-0'"></div>
+                <div v-for="boxName in grp.boxes" :key="boxName" class="flex items-center gap-2">
+                    <button @click="toggleFreeComposePool(boxName)"
+                            class="w-4 h-4 rounded border shrink-0 flex items-center justify-center"
+                            :class="getFreeComposeWeight(boxName) > 0 ? 'bg-text border-text' : 'border-border'">
+                        <svg v-if="getFreeComposeWeight(boxName) > 0" viewBox="0 0 24 24" class="w-2.5 h-2.5" fill="none" stroke="white" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
                     </button>
+                    <span class="text-[12px] text-text w-20 shrink-0 truncate">{{ boxLabel[boxName] || boxName }}</span>
+                    <input type="range" min="0" max="100"
+                           :value="getFreeComposeWeight(boxName)"
+                           @input="e => setFreeComposeWeight(boxName, e.target.value)"
+                           class="flex-1"
+                           :disabled="getFreeComposeWeight(boxName) === 0"
+                           :style="getFreeComposeWeight(boxName) === 0 ? 'opacity:0.3;' : ''">
+                    <span class="text-[10px] text-muted w-7 text-right tabular-nums shrink-0">{{ getFreeComposeWeight(boxName) }}</span>
                 </div>
-            </div>
-            <input v-if="getFreeComposeSettings(currentSession.id).srcDefault" type="range" min="0" max="100"
-                   :value="getFreeComposeSettings(currentSession.id).weightDefault"
-                   @input="e => { getFreeComposeSettings(currentSession.id).weightDefault = Number(e.target.value); debouncedSave(); }"
-                   class="w-full" style="accent-color: var(--nav-icon-color);">
-            <!-- 词典 -->
-            <div class="flex items-center justify-between">
-                <span class="text-[12px] text-text">词典</span>
-                <div class="flex items-center gap-2">
-                    <span class="text-[11px] text-muted w-8 text-right">{{ getFreeComposeSettings(currentSession.id).weightDict }}</span>
-                    <button @click="getFreeComposeSettings(currentSession.id).srcDict = !getFreeComposeSettings(currentSession.id).srcDict; debouncedSave();"
-                            class="w-9 h-5 rounded-full relative transition-colors shrink-0"
-                            :class="getFreeComposeSettings(currentSession.id).srcDict ? 'bg-text' : 'bg-border'">
-                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-surface rounded-full transition-transform"
-                             :class="getFreeComposeSettings(currentSession.id).srcDict ? 'translate-x-4' : 'translate-x-0'"></div>
-                    </button>
-                </div>
-            </div>
-            <input v-if="getFreeComposeSettings(currentSession.id).srcDict" type="range" min="0" max="100"
-                   :value="getFreeComposeSettings(currentSession.id).weightDict"
-                   @input="e => { getFreeComposeSettings(currentSession.id).weightDict = Number(e.target.value); debouncedSave(); }"
-                   class="w-full" style="accent-color: var(--nav-icon-color);">
-            <div class="text-[10px] text-muted/60 leading-relaxed px-1">
-                权重按归一化计算，不必凑 100；权重 0 或开关关 = 该源不参与；三源全关 = 不触发
+            </template>
+            <div class="text-[10px] text-muted/60 leading-relaxed px-1 mt-2">
+                权重按归一化计算（不必凑 100）。权重 0 或未勾选 = 该源不参与。<br>
+                此设置仅对当前会话生效，点「保存设置至所有联系人」可同步到所有会话。
             </div>
         </div>
         <!-- 造句手法 -->
@@ -1724,6 +1683,7 @@ body { color: var(--color-text); }
         <div v-if="deduplicateMenuOpen" class="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg p-1 z-10 min-w-[120px]">
             <div @click="runDeduplicate('exact')" class="px-3 py-2 hover:bg-bg rounded text-[12px] cursor-pointer">精确去重</div>
             <div @click="runDeduplicate('fuzzy')" class="px-3 py-2 hover:bg-bg rounded text-[12px] cursor-pointer">模糊去重</div>
+<div @click="deduplicateMenuOpen = false; globalDeduplicate()" class="px-3 py-2 hover:bg-bg rounded text-[12px] cursor-pointer border-t border-border/40 mt-1 pt-2">全局去重（公共 vs 私聊）</div>
         </div>
     </div>
 
@@ -1897,7 +1857,9 @@ body { color: var(--color-text); }
 </button>
 <!-- 分隔线 -->
 <div class="border-t border-border/40 my-2"></div>
-
+<button @click="splitLargeGroups(); libPanelOpen = false" class="w-full py-3 rounded-xl border border-border text-text text-[13px] tracking-widest hover:bg-bg transition-colors flex items-center justify-center gap-2">
+    <i data-lucide="scissors" class="w-4 h-4 stroke-[1.5]"></i> 自动切分大卷宗
+</button>
 <!-- 一键整理 -->
 <button @click="reorganizeFreeCompose('梦角自由造句')" class="w-full py-3 rounded-xl border border-border text-text text-[13px] tracking-widest hover:bg-bg transition-colors flex items-center justify-center gap-2">
     <i data-lucide="sparkles" class="w-4 h-4 stroke-[1.5]"></i> 整理个人版造句
@@ -2120,7 +2082,7 @@ body { color: var(--color-text); }
                         <template v-if="settingsTab === '回复设置'">
                             <!-- 子 tab -->
                             <div class="flex gap-1 mb-3 overflow-x-auto" style="scrollbar-width:none;">
-                                <button v-for="sub in ['私聊','群聊','留言回复','主动留言']" :key="sub"
+                                <button v-for="sub in ['私聊','群聊','主动留言']" :key="sub"
                                         @click="replySubTab = sub"
                                         class="shrink-0 px-3 py-1.5 rounded-full text-[12px] tracking-widest transition-colors"
                                         :class="replySubTab === sub ? 'bg-text text-white' : 'bg-bg text-muted hover:text-text'">{{ sub }}</button>
@@ -2262,7 +2224,39 @@ body { color: var(--color-text); }
                                         </div>
                                     </div>
                                 </section>
-
+                                <!-- ===== 信件语料来源 ===== -->
+                                <section class="mb-4">
+                                    <h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">信件语料来源</h3>
+                                    <div class="flex gap-1 mb-3">
+                                        <button v-for="sc in ['主动来信','回信']" :key="sc"
+                                                @click="mailSourceScene = sc"
+                                                class="flex-1 py-1.5 rounded-full text-[11px] tracking-widest transition-colors"
+                                                :class="mailSourceScene === sc ? 'bg-text text-white' : 'bg-bg text-muted hover:text-text'">{{ sc }}</button>
+                                    </div>
+                                    <div class="bg-surface border border-border/60 rounded-xl p-3 space-y-2">
+                                        <template v-for="grp in replySettingsGroups" :key="grp.catName">
+                                            <div class="text-[10px] text-muted/70 px-1">{{ grp.catName }}</div>
+                                            <div v-for="boxName in grp.boxes" :key="boxName" class="flex items-center gap-2">
+                                                <button @click="togglePool(mailSourceScene, boxName)"
+                                                        class="w-4 h-4 rounded border shrink-0 flex items-center justify-center"
+                                                        :class="getPoolWeight(mailSourceScene, boxName) > 0 ? 'bg-text border-text' : 'border-border'">
+                                                    <svg v-if="getPoolWeight(mailSourceScene, boxName) > 0" viewBox="0 0 24 24" class="w-2.5 h-2.5" fill="none" stroke="white" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg>
+                                                </button>
+                                                <span class="text-[12px] text-text w-20 shrink-0 truncate">{{ boxLabel[boxName] || boxName }}</span>
+                                                <input type="range" min="0" max="100"
+                                                       :value="getPoolWeight(mailSourceScene, boxName)"
+                                                       @input="e => setPoolWeight(mailSourceScene, boxName, e.target.value)"
+                                                       class="flex-1"
+                                                       :disabled="getPoolWeight(mailSourceScene, boxName) === 0"
+                                                       :style="getPoolWeight(mailSourceScene, boxName) === 0 ? 'opacity:0.3;' : ''">
+                                                <span class="text-[10px] text-muted w-7 text-right tabular-nums shrink-0">{{ getPoolWeight(mailSourceScene, boxName) }}</span>
+                                            </div>
+                                        </template>
+                                        <div class="text-[10px] text-muted/60 leading-relaxed px-1 pt-1">
+                                            权重按归一化计算。此设置全局生效，所有会话共用。
+                                        </div>
+                                    </div>
+                                </section>
                                 <!-- ===== 信件内容 ===== -->
                                 <section class="mb-4">
                                     <h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">信件内容</h3>
@@ -2297,9 +2291,37 @@ body { color: var(--color-text); }
                         </template>
 
                         <!-- ===== Tab: 系统 ===== -->
+                                                
                         <template v-if="settingsTab === '系统'">
-                            <div class="text-center text-xs text-muted/60 py-10">系统设置 · 待建设</div>
+                            <section>
+                                                        <section class="mb-4">
+                                <h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">卡顿自检</h3>
+                                <div class="bg-surface border border-border rounded-xl p-4">
+                                    <div class="text-[12px] text-muted leading-relaxed mb-3">
+                                        点开始后正常使用 10 秒（滚动、切页、打字都行）。<br>
+                                        结束后自动弹出报告，可一键优化。
+                                    </div>
+                                    <button v-if="!perfTest.running" @click="startPerfTest"
+                                            class="w-full py-2.5 rounded-lg text-white text-[13px] tracking-wider"
+                                            style="background:var(--nav-icon-color);">开始检测</button>
+                                    <div v-else class="text-center text-[11px] text-muted py-2.5">检测中，请正常操作…</div>
+                                </div>
+                            </section>
+                                <h3 class="text-[11px] font-semibold text-muted tracking-widest px-2 mb-2">存储优化</h3>
+                                <div class="bg-surface border border-border rounded-xl p-4">
+                                    <div class="text-[12px] text-muted leading-relaxed mb-3">
+                                        扫描所有已存图片，把过大的压缩到合适尺寸。<br>
+                                        覆盖原图，不可撤销（建议先导出备份）。
+                                    </div>
+                                    <button @click="compressAllImages"
+                                            class="w-full py-2.5 rounded-lg text-white text-[13px] tracking-wider"
+                                            style="background:var(--nav-icon-color);">
+                                        一键压缩所有图片
+                                    </button>
+                                </div>
+                            </section>
                         </template>
+<!-- ===== 设置页大tab ===== -->
 </main>
             </div>
                         
@@ -2993,14 +3015,32 @@ body { color: var(--color-text); }
         </div>
         <main class="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             <div v-if="!filteredOutbox.length" class="mt-20 text-center text-xs text-muted/60">还没有寄出的信</div>
-                       <div v-for="item in filteredOutbox" :key="item.id"
-                 @click="markMailRead(item.sessionId, item.id); openMailDetail(item)"
-                 class="bg-surface border border-border rounded-xl p-4 cursor-pointer hover:bg-bg/40 transition-colors">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-[11px] font-medium text-text">寄给 {{ item.sessionName }}</span>
-                    <span class="text-[10px] text-muted">{{ formatMailTime(item.timestamp) }}</span>
+                                   <div v-for="item in filteredOutbox" :key="item.id"
+                 class="bg-surface border border-border rounded-xl p-4">
+                <div @click="markMailRead(item.sessionId, item.id); openMailDetail(item)" class="cursor-pointer">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[11px] font-medium text-text">寄给 {{ item.sessionName }}</span>
+                        <span class="text-[10px] text-muted">{{ formatMailTime(item.timestamp) }}</span>
+                    </div>
+                    <div class="text-[13px] text-text leading-relaxed whitespace-pre-wrap line-clamp-3">{{ item.body }}</div>
                 </div>
-                <div class="text-[13px] text-text leading-relaxed whitespace-pre-wrap line-clamp-3">{{ item.body }}</div>
+                <!-- 嵌套的回信 -->
+                <div v-if="getRepliesForLetter(item.id, item.sessionId).length" class="mt-3 pt-3 border-t border-border/30 space-y-2">
+                    <div class="text-[10px] text-muted tracking-widest">回信 · {{ getRepliesForLetter(item.id, item.sessionId).length }} 封</div>
+                    <div v-for="reply in getRepliesForLetter(item.id, item.sessionId)" :key="reply.id"
+                         @click="markMailRead(reply.sessionId, reply.id); openMailDetail(reply)"
+                         class="rounded-lg border border-border/40 p-3 cursor-pointer hover:bg-bg/40 transition-colors"
+                         :style="!reply.read ? 'background: rgba(0,0,0,0.02);' : ''">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[11px] text-text">来自 {{ reply.sessionName }}</span>
+                                <span v-if="!reply.read" class="text-[9px] tracking-widest px-1.5 py-0.5 rounded-full bg-text text-white">新</span>
+                            </div>
+                            <span class="text-[10px] text-muted">{{ formatMailTime(reply.timestamp) }}</span>
+                        </div>
+                        <div class="text-[12px] text-text leading-relaxed whitespace-pre-wrap line-clamp-2">{{ reply.body }}</div>
+                    </div>
+                </div>
             </div>
         </main>
     </template>
@@ -4468,6 +4508,109 @@ body { color: var(--color-text); }
         </div>
     </div>
 </div>
+<!-- ===== 图片压缩 loading 弹窗 ===== -->
+<div v-if="compressProgress.show" class="fixed inset-0 z-[400] flex items-center justify-center" style="background: rgba(0,0,0,0.45);">
+    <div class="bg-surface rounded-2xl shadow-2xl px-6 py-5 flex flex-col items-center" style="width: 240px;">
+        <!-- 旋转图标 -->
+        <div class="relative w-12 h-12 mb-3">
+            <div class="absolute inset-0 rounded-full border-2" style="border-color: rgba(0,0,0,0.08);"></div>
+            <div class="absolute inset-0 rounded-full border-2" style="border-color: transparent; border-top-color: var(--nav-icon-color); animation: spinSlow 0.9s linear infinite;"></div>
+            <div class="absolute inset-0 flex items-center justify-center">
+                <i data-lucide="image" class="w-5 h-5 text-muted"></i>
+            </div>
+        </div>
+        <!-- 文字 -->
+<div class="text-[12px] tracking-widest text-text mb-1">
+            {{ compressProgress.total === 0 ? '正在扫描图片' : '正在压缩图片' }}
+        </div>
+        <div class="text-[10px] text-muted tabular-nums mb-3">
+            {{ compressProgress.current }} / {{ compressProgress.total }}
+        </div>
+        <!-- 进度条 -->
+        <div class="w-full h-1.5 rounded-full overflow-hidden mb-3" style="background: rgba(0,0,0,0.08);">
+            <div class="h-full transition-all duration-150"
+                 :style="{ width: (compressProgress.total ? Math.round(compressProgress.current / compressProgress.total * 100) : 0) + '%', background: 'var(--nav-icon-color)' }"></div>
+        </div>
+        <!-- 符号行 -->
+        <div class="flex items-center gap-2 text-[16px]">
+            <span style="animation: bobFloat 1.2s ease-in-out infinite;">🖼️</span>
+            <span style="animation: bobFloat 1.2s ease-in-out infinite 0.15s;">✨</span>
+            <span style="animation: bobFloat 1.2s ease-in-out infinite 0.3s;">📦</span>
+            <span style="animation: bobFloat 1.2s ease-in-out infinite 0.45s;">✨</span>
+        </div>
+    </div>
+</div>
+<!-- ===== 全局长按菜单（fixed 定位跟随坐标） ===== -->
+<div v-if="msgMenu.show"
+     class="msg-menu-bar fixed z-[400] bg-[#2c2c2c] rounded-lg shadow-xl px-1 py-1 flex flex-col gap-0.5"
+     :style="{ left: msgMenu.x + 'px', top: msgMenu.y + 'px' }"
+     @click.stop>
+    <button @click.stop="msgMenuQuote" class="px-3 py-1.5 text-[12px] text-white hover:bg-white/10 rounded text-left whitespace-nowrap">引用</button>
+    <button @click.stop="msgMenuDelete" class="px-3 py-1.5 text-[12px] text-red-400 hover:bg-white/10 rounded text-left whitespace-nowrap">删除</button>
+</div>
+<!-- ===== 卡顿自检：顶部悬浮条 ===== -->
+<transition name="navfade">
+    <div v-if="perfTest.running" class="fixed top-3 left-1/2 -translate-x-1/2 z-[400] pointer-events-none" style="width: calc(100% - 32px); max-width: 360px;">
+        <div class="rounded-full shadow-lg px-3 py-2 flex items-center gap-2"
+                          style="background: color-mix(in srgb, var(--nav-icon-color) 10%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid color-mix(in srgb, var(--nav-icon-color) 16%, transparent);">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background: var(--nav-icon-color); animation: typingDot 1.1s infinite ease-in-out;"></span>
+            <span class="text-[11px] tracking-widest flex-1" style="color: var(--color-text);">检测中 · 请正常操作</span>
+            <span class="text-[11px] tabular-nums font-medium" style="color: var(--color-text);">{{ perfTest.progress }}%</span>
+        </div>
+        <div class="mt-1 h-1 rounded-full overflow-hidden mx-3" style="background: rgba(0,0,0,0.1);">
+            <div class="h-full transition-all duration-150" :style="{ width: perfTest.progress + '%', background: 'var(--nav-icon-color)' }"></div>
+        </div>
+    </div>
+</transition>
+
+<!-- ===== 卡顿自检：结果弹窗 ===== -->
+<transition name="fade">
+    <div v-if="perfTest.showResult && perfTest.report" class="fixed inset-0 z-[400] flex items-center justify-center" style="background: rgba(0,0,0,0.45);" @click.self="perfTest.showResult = false">
+        <div class="bg-surface rounded-2xl shadow-2xl flex flex-col" style="width: 92vw; max-width: 360px; max-height: 82vh;">
+            <div class="px-5 pt-4 pb-2 shrink-0">
+                <div class="text-[14px] font-medium text-text tracking-wider">检测完成</div>
+                <div class="text-[11px] text-muted mt-0.5">当前状态：{{ perfTest.report.level }}</div>
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 py-3 space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="rounded-xl p-3 bg-bg/40 border border-border/30">
+                        <div class="text-[10px] text-muted tracking-widest mb-1">平均帧率</div>
+                        <div class="text-[18px] font-light tabular-nums text-text">{{ perfTest.report.fps }} <span class="text-[10px] text-muted">FPS</span></div>
+                    </div>
+                    <div class="rounded-xl p-3 bg-bg/40 border border-border/30">
+                        <div class="text-[10px] text-muted tracking-widest mb-1">掉帧率</div>
+                        <div class="text-[18px] font-light tabular-nums" :style="{ color: perfTest.report.dropRate >= 20 ? '#ef4444' : perfTest.report.dropRate >= 5 ? '#f59e0b' : 'var(--color-text)' }">{{ perfTest.report.dropRate }}<span class="text-[10px] text-muted">%</span></div>
+                    </div>
+                    <div class="rounded-xl p-3 bg-bg/40 border border-border/30">
+                        <div class="text-[10px] text-muted tracking-widest mb-1">数据体积</div>
+                        <div class="text-[18px] font-light tabular-nums text-text">{{ (perfTest.report.dataSize / 1024).toFixed(0) }} <span class="text-[10px] text-muted">KB</span></div>
+                    </div>
+                    <div class="rounded-xl p-3 bg-bg/40 border border-border/30">
+                        <div class="text-[10px] text-muted tracking-widest mb-1">图片总数</div>
+                        <div class="text-[18px] font-light tabular-nums text-text">{{ perfTest.report.imageCount }} <span class="text-[10px] text-muted">张</span></div>
+                    </div>
+                </div>
+                <div v-if="perfTest.report.sessionStats.length" class="rounded-xl p-3 bg-bg/40 border border-border/30">
+                    <div class="text-[10px] text-muted tracking-widest mb-2">占用排行（字卡 / 消息）</div>
+                    <div v-for="st in perfTest.report.sessionStats.slice(0, 5)" :key="st.name" class="flex justify-between text-[12px] py-1">
+                        <span class="text-text truncate pr-2">{{ st.name }}</span>
+                        <span class="text-muted tabular-nums shrink-0">{{ st.cards }} 卡 · {{ st.msgs }} 消息</span>
+                    </div>
+                </div>
+                <div class="text-[10px] text-muted/60 leading-relaxed px-1">
+                    一键优化会清内存缓存 + 压缩大图，不动任何数据。
+                </div>
+            </div>
+            <div class="shrink-0 px-4 py-3 border-t border-border/40 flex gap-2">
+                <button @click="perfTest.showResult = false"
+                        class="flex-1 py-2.5 rounded-xl border border-border text-[13px] text-muted">关闭</button>
+                <button @click="runPerfOptimize"
+                        class="flex-1 py-2.5 rounded-xl text-white text-[13px] tracking-wider"
+                        style="background:var(--nav-icon-color);">一键优化</button>
+            </div>
+        </div>
+    </div>
+</transition>
 
 <!-弹窗往上加->
 
@@ -6028,13 +6171,24 @@ return items;
           return items;
         };
         // 抽 n 句字卡：每一句都独立随机、允许重复（像每次独立从一叠卡里摸一张）
-        const drawEnvelopeCards = (n, session) => {
-          const pool = envelopeCardPool(session);
-          if (!pool.length) return [];
-          const count = n || (5 + Math.floor(Math.random() * 10)); // 5~14 句
+               const drawEnvelopeCards = (n, session, situation) => {
+          const sit = situation || '信封回复';
+          const count = n || (5 + Math.floor(Math.random() * 10));
+          const items = drawWeightedCards(session, sit, count, { allowRepeat: true });
+          if (!items.length) {
+            // 兜底：走旧逻辑
+            const pool = envelopeCardPool(session);
+            if (!pool.length) return [];
+            const result = [];
+            for (let i = 0; i < count; i++) {
+              result.push(pool[Math.floor(Math.random() * pool.length)]);
+            }
+            return result;
+          }
           const result = [];
           for (let i = 0; i < count; i++) {
-            result.push(pool[Math.floor(Math.random() * pool.length)]);
+            const item = items[Math.floor(Math.random() * items.length)];
+            if (item.text) result.push(item.text);
           }
           return result;
         };
@@ -6074,7 +6228,7 @@ return items;
                 const minC = Math.max(1, settings.letterMinCards || 20);
                 const maxC = Math.max(minC, settings.letterMaxCards || 50);
                 const count = minC + Math.floor(Math.random() * (maxC - minC + 1));
-                e.cards = drawEnvelopeCards(count, s);
+                 e.cards = drawEnvelopeCards(count, s, '回信');
                 e.status = 'arrived';
                 // 回填原信的 repliedBy
                 if (e.replyTo) {
@@ -6136,7 +6290,7 @@ const runAutoLetterCheck = () => {
         const minCards = Math.max(1, settings.letterMinCards || 20);
         const maxCards = Math.max(minCards, settings.letterMaxCards || 50);
         const count = minCards + Math.floor(Math.random() * (maxCards - minCards + 1));
-        const cards = drawEnvelopeCards(count, s);
+        const cards = drawEnvelopeCards(count, s, '主动来信');
         const arriveAt = now;
         s.envelopes.push({
             id: 'd_' + now + '_' + s.id,
@@ -7101,11 +7255,114 @@ const getPublicTexts = () => {
     return items;
 };
 
-// ===== 权重抽取：书册 → 卷宗 → 单卡（O(1) 三级下钻） =====
+// ===== 抽卡系统：扁平池 + 绝对权重 =====
+const _poolCache = {};
+
+const _clearPoolCache = (sid) => {
+    if (sid) {
+        Object.keys(_poolCache).forEach(k => { if (k.includes('__' + sid + '__')) delete _poolCache[k]; });
+    } else {
+        Object.keys(_poolCache).forEach(k => delete _poolCache[k]);
+    }
+};
+
+// 从书册收集卡（支持书册级 / 卷宗级）
+const _collectCards = (box, boxName, out, perCardWeight) => {
+    const isParted = (boxName === '群聊' || boxName === '红包备注');
+    (box.groups || []).forEach(g => {
+        if (isParted) {
+            (g.groups || []).forEach(inner => {
+                (inner.replies || []).forEach(r => {
+                    if (r.enabled === false) return;
+                    const t = (r.text || '').trim();
+                    if (!t && !r.image) return;
+                    out.push({ text: t, image: r.image || null, _w: perCardWeight || 1 });
+                });
+            });
+        } else {
+            (g.replies || []).forEach(r => {
+                if (r.enabled === false) return;
+                const t = (r.text || '').trim();
+                if (!t && !r.image) return;
+                out.push({ text: t, image: r.image || null, _w: perCardWeight || 1 });
+            });
+        }
+    });
+};
+
+// 构建池：① 固定书册列表（卡数加权） ② 按 weightMap（绝对权重）
+const _buildPool = (session, opts) => {
+    const s = session || currentSession.value;
+    if (!s) return [];
+    const out = [];
+    if (opts.boxNames) {
+        // 固定书册：每张卡权重相等 = 1（卡数加权）
+        opts.boxNames.forEach(bn => {
+            const box = isSharedBox(bn) ? sharedBoxes[bn] : s.corpus?.boxes?.[bn];
+            if (!box) return;
+            _collectCards(box, bn, out, 1);
+        });
+    } else if (opts.situation) {
+        const wm = settings.replyWeightMap && settings.replyWeightMap[opts.situation];
+        if (!wm || !wm.pools) return [];
+        Object.entries(wm.pools).forEach(([bn, weight]) => {
+            if (!weight || weight <= 0) return;
+            const box = isSharedBox(bn) ? sharedBoxes[bn] : s.corpus?.boxes?.[bn];
+            if (!box) return;
+            // 先统计卡数，再算单卡权重
+            const temp = [];
+            _collectCards(box, bn, temp, 1);
+            if (!temp.length) return;
+            const perCard = weight / temp.length;
+            temp.forEach(c => { c._w = perCard; out.push(c); });
+        });
+    }
+    return out;
+};
+
+// 从池抽 N 张（allowRepeat=false 时不重复）
+const _drawFromPool = (pool, n, allowRepeat) => {
+    if (!pool || !pool.length) return [];
+    const out = [];
+    if (allowRepeat) {
+        // 有放回
+        for (let i = 0; i < n; i++) {
+            const totalW = pool.reduce((sum, c) => sum + (c._w || 1), 0);
+            if (totalW <= 0) break;
+            let r = Math.random() * totalW;
+            let pick = pool[pool.length - 1];
+            for (const c of pool) {
+                r -= (c._w || 1);
+                if (r <= 0) { pick = c; break; }
+            }
+            out.push({ text: pick.text, image: pick.image });
+        }
+    } else {
+        // 无放回
+        const work = pool.map(c => ({ text: c.text, image: c.image, _w: c._w || 1 }));
+        const maxN = Math.min(n, work.length);
+        for (let i = 0; i < maxN; i++) {
+            const totalW = work.reduce((sum, c) => sum + c._w, 0);
+            if (totalW <= 0) break;
+            let r = Math.random() * totalW;
+            let idx = work.length - 1;
+            for (let j = 0; j < work.length; j++) {
+                r -= work[j]._w;
+                if (r <= 0) { idx = j; break; }
+            }
+            const picked = work[idx];
+            out.push({ text: picked.text, image: picked.image });
+            work.splice(idx, 1);
+        }
+    }
+    return out;
+};
+
 const _pickRandomBook = (session, situation) => {
     const s = session || currentSession.value;
     if (!s) return null;
-    const wm = s.corpus && s.corpus.weightMap && s.corpus.weightMap[situation];
+    // 读全局设置里的权重
+    const wm = settings.replyWeightMap && settings.replyWeightMap[situation];
     if (!wm || !wm.pools) return null;
     const valid = [];
     let totalW = 0;
@@ -7117,6 +7374,7 @@ const _pickRandomBook = (session, situation) => {
         const nonEmpty = box.groups.some(g => Array.isArray(g.replies) && g.replies.length > 0);
         if (!nonEmpty) return;
         valid.push({ boxName, weight, box });
+        totalW += weight;
     });
     if (!valid.length) return null;
     let r = Math.random() * totalW;
@@ -7141,22 +7399,23 @@ const drawWeightedCard = (session, situation) => {
     return { text: (r.text || '').trim(), image: r.image || null };
 };
 
-// 抽 N 张不重复（用于拼接模式）
-const drawWeightedCards = (session, situation, n) => {
-    const out = [];
-    const seen = new Set();
-    let tries = 0;
-    const maxTries = Math.max(n * 8, 20);
-    while (out.length < n && tries < maxTries) {
-        tries++;
-        const c = drawWeightedCard(session, situation);
-        if (!c) break;
-        const key = c.text || c.image || '';
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        out.push(c);
+// ===== 抽 N 张（opts.boxNames=固定书册；opts.allowRepeat=允许重复） =====
+const drawWeightedCards = (session, situation, n, opts = {}) => {
+    const s = session || currentSession.value;
+    if (!s) return [];
+    const allowRepeat = !!opts.allowRepeat;
+    const boxNames = opts.boxNames;
+    const cacheKey = boxNames
+        ? `__boxes__${boxNames.join(',')}__${s.id}__`
+        : `__sit__${situation}__${s.id}__`;
+    // 缓存池
+    if (!_poolCache[cacheKey]) {
+        _poolCache[cacheKey] = _buildPool(s, {
+            situation: boxNames ? null : situation,
+            boxNames,
+        });
     }
-    return out;
+    return _drawFromPool(_poolCache[cacheKey], n, allowRepeat);
 };
 
     const sessions = ref(createDefaultSessions());
@@ -7173,8 +7432,16 @@ const drawWeightedCards = (session, situation, n) => {
     );
 
     // 主屏只显示未隐藏的聊天室
-    const visibleSessions = computed(() => sessions.value.filter((s) => !s.hidden));
-
+const visibleSessions = computed(() => {
+    return sessions.value
+        .filter((s) => !s.hidden)
+        .slice()
+        .sort((a, b) => {
+            const aLast = a.messages && a.messages.length ? a.messages[a.messages.length - 1].timestamp : 0;
+            const bLast = b.messages && b.messages.length ? b.messages[b.messages.length - 1].timestamp : 0;
+            return bLast - aLast;
+        });
+});
     // 模板里继续用 messages，但它现在指向当前 session 的数据
     const messages = computed(() => (currentSession.value ? currentSession.value.messages : []));
 
@@ -7440,7 +7707,8 @@ const exportSelectedBoxes = ref([]);
       navCollapsed: false, // 主屏顶部图标收纳（字卡/意趣 收起）
       playerCSS: '',                // 我的气泡刺绣（全局，群聊私聊通用）    // 空白回复（通用）
 enableCardStitch: false,//拼字卡
-spacePhoto: '',
+spacePhotos: [],       // 相册多张
+      spacePhotoIndex: 0,    // 当前轮播到第几张
       spaceMemo: '',
 spacePlaylistId: '14273792576',
       apps: [],
@@ -7738,10 +8006,11 @@ const saveFreeComposeSettingsToAll = async () => {
     if (!s) return;
     if (!(await appConfirm('把当前会话的「词典拼字」「梦角自由造句」「卷宗管理」「吐槽」设置复制到所有会话？', '保存设置至所有联系人'))) return;
 
-    const copyDict = JSON.parse(JSON.stringify(getDictSpellSettings(s.id)));
+        const copyDict = JSON.parse(JSON.stringify(getDictSpellSettings(s.id)));
     const copyFree = JSON.parse(JSON.stringify(getFreeComposeSettings(s.id)));
     const copyGroup = JSON.parse(JSON.stringify(getFreeComposeGroupSettings(s.id)));
     const copyTease = JSON.parse(JSON.stringify(getTeaseSettings(s.id)));
+    const copyWeights = JSON.parse(JSON.stringify(s.freeComposeWeightMap || defaultFreeComposeWeightMap()));
 
     let count = 0;
     sessions.value.forEach(other => {
@@ -7750,11 +8019,13 @@ const saveFreeComposeSettingsToAll = async () => {
         freeComposeSettingsMap[other.id] = JSON.parse(JSON.stringify(copyFree));
         freeComposeGroupSettingsMap[other.id] = JSON.parse(JSON.stringify(copyGroup));
         teaseSettingsMap[other.id] = JSON.parse(JSON.stringify(copyTease));
+        other.freeComposeWeightMap = JSON.parse(JSON.stringify(copyWeights));
         count++;
     });
     debouncedSave();
     showToast(`已复制到 ${count} 个会话`);
 };
+
 // ===== 从词典抽语录（核心函数） =====
 const drawQuotesFromDict = (session, count) => {
     if (!session) return [];
@@ -7811,75 +8082,14 @@ const drawQuotesFromDict = (session, count) => {
 };
 
 
-// ===== 从三源按权重抽一条源句 =====
+// ===== 抽一条源句（走会话自己的 freeComposeWeightMap） =====
 const drawSourceSentence = (session) => {
     if (!session) return null;
-    const settings = getFreeComposeSettings(session.id);
-    const pool = [];
-
-    // 1. 自定义字卡（私聊书册里 isSystem !== true）
-    if (settings.srcCustom && settings.weightCustom > 0) {
-        const box = session.corpus?.boxes?.['私聊'];
-        (box?.groups || []).forEach(g => {
-            (g.replies || []).forEach(r => {
-                if (r.enabled === false || r.image) return;
-                const t = (r.text || '').trim();
-                if (!t || t.length < 4) return;    // 至少 4 字
-                if (r.isSystem === true) return;    // 排除系统预设
-                pool.push({ text: t, weight: settings.weightCustom });
-            });
-        });
-    }
-
-    // 2. 默认聊天字卡（私聊书册里 isSystem === true）
-    if (settings.srcDefault && settings.weightDefault > 0) {
-        const box = session.corpus?.boxes?.['私聊'];
-        (box?.groups || []).forEach(g => {
-            (g.replies || []).forEach(r => {
-                if (r.enabled === false || r.image) return;
-                const t = (r.text || '').trim();
-                if (!t || t.length < 4) return;
-                if (r.isSystem !== true) return;
-                pool.push({ text: t, weight: settings.weightDefault });
-            });
-        });
-    }
-
-    // 3. 词典（语录 + 词库，词库过短的过滤）
-    if (settings.srcDict && settings.weightDict > 0) {
-        const box = sharedBoxes['词典'];
-        (box?.groups || []).forEach(g => {
-            const name = g.name || '';
-            const isQuote = name.includes('语录');
-            const isWord = name.includes('词库') || name.includes('基础') ||
-                          name.includes('日常') || name.includes('饮食') ||
-                          name.includes('行动') || name.includes('物件') ||
-                          name.includes('水果');
-            if (!isQuote && !isWord) return;
-            (g.replies || []).forEach(r => {
-                if (r.enabled === false) return;
-                const t = (r.text || '').trim();
-                if (!t) return;
-                // 语录：至少 4 字；词：至少 2 字
-                if (isQuote && t.length < 4) return;
-                if (isWord && t.length < 2) return;
-                pool.push({ text: t, weight: settings.weightDict });
-            });
-        });
-    }
-
-    if (!pool.length) return null;
-
-    // 按权重抽一条
-    const totalWeight = pool.reduce((s, x) => s + x.weight, 0);
-    if (totalWeight <= 0) return null;
-    let r = Math.random() * totalWeight;
-    for (const item of pool) {
-        r -= item.weight;
-        if (r <= 0) return item.text;
-    }
-    return pool[pool.length - 1].text;
+    const text = drawFreeComposeCard(session);
+    if (!text || text.length < 4) return null;
+    return text;
 };
+
 // ===== 从所有书册抽一个词（给手法 2a 用） =====
 const drawWordFromAllBoxes = (session) => {
     if (!session) return null;
@@ -8495,7 +8705,7 @@ const mailFilter = reactive({
 
 // ===== 信箱 4 tab =====
 const mailboxTab = ref('inbox');  // 'inbox' | 'outbox' | 'write' | 'data'
-
+const mailSourceScene = ref('主动来信');
 // 写信草稿
 const letterDraft = reactive({
     to: '',
@@ -8552,10 +8762,22 @@ const allMailItems = computed(() => {
     return uniqueItems.sort((a, b) => b.timestamp - a.timestamp);
 });
 
+
 // 收信 / 寄信 分开
-const inboxList = computed(() => allMailItems.value.filter(m => m.sender === 'them'));
+// 收到 = 主动来信（没有 replyTo 的）
+// 寄出 = 用户寄出的信
+// 回信不显示在收件箱，会嵌在寄出的信下面
+const inboxList = computed(() =>
+    allMailItems.value.filter(m => m.sender === 'them' && !m.raw?.replyTo)
+);
 const outboxList = computed(() => allMailItems.value.filter(m => m.sender === 'me'));
 
+// 给寄出的信找到它的回信（可能多条）
+const getRepliesForLetter = (letterId, sessionId) => {
+    return allMailItems.value.filter(m =>
+        m.sender === 'them' && m.sessionId === sessionId && m.raw?.replyTo === letterId
+    );
+};
 // 应用筛选（会话 + 状态）
 const _applyMailFilter = (list) => {
     let out = list;
@@ -8836,6 +9058,7 @@ sharedBoxes: JSON.parse(JSON.stringify(sharedBoxes)),
 dictSpellSettingsMap: JSON.parse(JSON.stringify(dictSpellSettingsMap)),
 freeComposeSettingsMap: JSON.parse(JSON.stringify(freeComposeSettingsMap)),
 freeComposeGroupSettingsMap: JSON.parse(JSON.stringify(freeComposeGroupSettingsMap)),
+teaseSettingsMap: JSON.parse(JSON.stringify(teaseSettingsMap)),
           };
           await localforage.setItem('liubai_v2_db', fullData);
           // ===== localStorage 双保险镜像：localforage 之外再存一份，防止 IndexedDB 被清而丢档 =====
@@ -9485,20 +9708,19 @@ const selectTag = (type, text) => {
     }
 };
     // 面板内添加表情包（仅进我的列表，不进语料）
-    const handleEmoteAdd = (e) => {
+        const handleEmoteAdd = async (e) => {
       const files = e.target.files;
       if (!files || !files.length) return;
       const s = currentSession.value;
       if (!s) return;
       if (!Array.isArray(s.myEmotes)) s.myEmotes = [];
       for (const file of files) {
-        const fr = new FileReader();
-        fr.onload = (ev) => {
-          s.myEmotes.push(ev.target.result);
-          debouncedSave();
-        };
-        fr.readAsDataURL(file);
+        try {
+          const compressed = await compressImage(file, 480, 0.80);
+          s.myEmotes.push(compressed);
+        } catch (err) { console.error('[表情包压缩失败]', err); }
       }
+      debouncedSave();
       e.target.value = '';
     };
     // 长按删除表情包（仅删我的列表，不动语料）
@@ -9541,17 +9763,18 @@ const selectTag = (type, text) => {
       { key: 'library', label: '字卡' },
       { key: 'yiqu', label: '意趣' },
     ];
-    const onNavIconUpload = (key, e) => {
+        const onNavIconUpload = async (key, e) => {
       const file = e.target.files && e.target.files[0];
       const s = currentSession.value;
       if (!file || !s) return;
       if (!s.navIcons) s.navIcons = { library: '', insight: '', yiqu: '' };
-      const fr = new FileReader();
-      fr.onload = (ev) => {
-        s.navIcons[key] = ev.target.result;
+      try {
+        const compressed = await compressImage(file, 128, 0.85);
+        s.navIcons[key] = compressed;
         debouncedSave();
-      };
-      fr.readAsDataURL(file);
+      } catch (err) {
+        console.error('[导航图标压缩失败]', err);
+      }
       e.target.value = '';
     };
     const clearNavIcon = (key) => {
@@ -9984,8 +10207,11 @@ if (cur.type !== 'group' && Math.random() < getTeaseSettings(cur.id).prob) {
         if (settings.blankReplyEnabled && Math.random() < 0.1) {
             acts.push(() => sendMessage('them', ' ', { blank: true, session: cur }));
         } else {
-                                              // ===== 用权重抽卡（书册 → 卷宗 → 单卡） =====
-            const pool = drawWeightedCards(cur, '私聊', 30);
+                                                                    // ===== 拼接模式固定「私聊+公共」；非拼接走权重 =====
+            const _concatCfg = cur ? getSessionSettings(cur.id) : { concatEnabled: true };
+            const pool = _concatCfg.concatEnabled
+                ? drawWeightedCards(cur, null, 30, { boxNames: ['私聊', '公共'] })
+                : drawWeightedCards(cur, '私聊', 30);
             if (pool.length) {
                 const marked = settings.markEnabled && Math.random() < 0.15;
                 const quote = Math.random() < 0.1 ? pickQuote(cur) : null;
@@ -10127,8 +10353,11 @@ const opts = { marked, session: cur };
       }
       // ===== 拍一拍逻辑结束 =====
 
-            // ===== 用群聊场景的权重抽卡（成员语料自动被抽到的话就带上） =====
-      let pool = drawWeightedCards(group, '群聊', 20);
+                 // ===== 拼接模式固定「群聊+公共」；非拼接走权重 =====
+      const _gCfg = group ? getSessionSettings(group.id) : { concatEnabled: true };
+      let pool = _gCfg.concatEnabled
+        ? drawWeightedCards(group, null, 20, { boxNames: ['群聊', '公共'] })
+        : drawWeightedCards(group, '群聊', 20);
       // 兼容：如果群聊权重没配或抽不到，回退到成员个人语料
       if (!pool.length) {
         const privateBox = member.corpus?.boxes?.['私聊'];
@@ -10481,8 +10710,9 @@ if (Math.random() < 0.1) {
     };
 
     const openSession = (sessionId) => {
-      const s = sessions.value.find((x) => x.id === sessionId);
-      if (!s) return;
+    const s = sessions.value.find((x) => x.id === sessionId);
+    if (!s) return;
+    _clearPoolCache();   // 切会话清池子
       // 从云笺册点进来时，自动解除隐藏，让它回到主屏
       if (s.hidden) {
         s.hidden = false;
@@ -10518,6 +10748,7 @@ const onHomeTouchEnd = (e) => {
 };
 
 // ===== S2：温馨空间 =====
+
 const spaceMonthName = computed(() => {
     const months = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
     return months[new Date().getMonth()];
@@ -10527,18 +10758,59 @@ const spaceWeekday = computed(() => {
     const w = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
     return w[new Date().getDay()];
 });
+// ===== 温馨空间：相册轮播 =====
+const _spacePhotoTimer = ref(null);
+const currentSpacePhoto = computed(() => {
+    const arr = settings.spacePhotos || [];
+    if (!arr.length) return settings.spacePhoto || '';
+    const i = (settings.spacePhotoIndex || 0) % arr.length;
+    return arr[i] || '';
+});
+const rotateSpacePhoto = () => {
+    const arr = settings.spacePhotos || [];
+    if (arr.length <= 1) return;
+    let next = settings.spacePhotoIndex || 0;
+    for (let i = 0; i < 10; i++) {
+        const r = Math.floor(Math.random() * arr.length);
+        if (r !== next) { next = r; break; }
+    }
+    settings.spacePhotoIndex = next;
+};
+const startSpacePhotoRotate = () => {
+    if (_spacePhotoTimer.value) clearInterval(_spacePhotoTimer.value);
+    _spacePhotoTimer.value = setInterval(() => { rotateSpacePhoto(); }, 5000);
+};
+const stopSpacePhotoRotate = () => {
+    if (_spacePhotoTimer.value) { clearInterval(_spacePhotoTimer.value); _spacePhotoTimer.value = null; }
+};
+
 const uploadSpacePhoto = (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    const fr = new FileReader();
-    fr.onload = (ev) => {
-        settings.spacePhoto = ev.target.result;
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    const arr = Array.isArray(settings.spacePhotos) ? settings.spacePhotos.slice() : [];
+    const _handle = async () => {
+        for (const file of files) {
+            try {
+                const compressed = await compressImage(file, 750, 0.80);
+                arr.push(compressed);
+            } catch (err) { console.error('[相册压缩失败]', err); }
+        }
+        settings.spacePhotos = arr;
         debouncedSave();
+        if (arr.length > 1) startSpacePhotoRotate();
     };
-    fr.readAsDataURL(file);
+    _handle();
     e.target.value = '';
 };
 
+const removeSpacePhoto = (idx) => {
+    const arr = (settings.spacePhotos || []).slice();
+    arr.splice(idx, 1);
+    settings.spacePhotos = arr;
+    if (settings.spacePhotoIndex >= arr.length) settings.spacePhotoIndex = 0;
+    debouncedSave();
+    if (arr.length <= 1) stopSpacePhotoRotate();
+};
 // ===== T1：温馨空间日历卡 =====
 const spaceTodayStr = computed(() => {
     const d = new Date();
@@ -10596,23 +10868,52 @@ const spaceInstallmentsToday = computed(() => installmentsDueToday(spaceTodayStr
 const spacePeriodDay = computed(() => periodDayNumber(spaceTodayStr.value));
 
 // ===== 长按消息菜单 =====
-const msgMenu = reactive({ show: false, msg: null });
+const msgMenu = reactive({ show: false, msg: null, x: 0, y: 0 });
 const pendingQuote = ref(null);
 let _msgPressTimer = null;
 
-const openMsgMenu = (msg) => {
+const openMsgMenu = (msg, eventOrPos) => {
     if (!msg) return;
+    let cx = 0, cy = 0;
+    if (eventOrPos) {
+        if (eventOrPos.clientX !== undefined) {
+            cx = eventOrPos.clientX;
+            cy = eventOrPos.clientY;
+        } else if (eventOrPos.touches && eventOrPos.touches[0]) {
+            cx = eventOrPos.touches[0].clientX;
+            cy = eventOrPos.touches[0].clientY;
+        }
+    }
+    if (!cx && !cy) {
+        cx = window.innerWidth / 2;
+        cy = window.innerHeight / 2;
+    }
+    // 菜单尺寸估计（约 90×90）
+    const MENU_W = 100;
+    const MENU_H = 90;
+    if (cx + MENU_W > window.innerWidth) cx = window.innerWidth - MENU_W - 8;
+    if (cy + MENU_H > window.innerHeight) cy = window.innerHeight - MENU_H - 8;
+    if (cx < 8) cx = 8;
+    if (cy < 8) cy = 8;
+    msgMenu.x = cx;
+    msgMenu.y = cy;
     msgMenu.msg = msg;
     msgMenu.show = true;
 };
+
 const closeMsgMenu = () => {
     msgMenu.show = false;
     msgMenu.msg = null;
 };
-const onMsgPressStart = (msg) => {
+let _pressX = 0, _pressY = 0;
+const onMsgPressStart = (msg, e) => {
+    if (e && e.touches && e.touches[0]) {
+        _pressX = e.touches[0].clientX;
+        _pressY = e.touches[0].clientY;
+    }
     if (_msgPressTimer) clearTimeout(_msgPressTimer);
     _msgPressTimer = setTimeout(() => {
-        openMsgMenu(msg);
+        openMsgMenu(msg, { clientX: _pressX, clientY: _pressY });
         _msgPressTimer = null;
     }, 500);
 };
@@ -10740,6 +11041,8 @@ const initAppsSortable = () => {
     }
 };
 watch(homePage, (v) => {
+    if (v === 1) startSpacePhotoRotate();
+    else stopSpacePhotoRotate();
     if (v === 2) nextTick(() => {
         try {
             initAppsSortable();
@@ -10926,6 +11229,7 @@ const setPoolWeight = (scene, boxName, v) => {
     if (!newMap[scene].pools) newMap[scene].pools = {};
     newMap[scene].pools[boxName] = val;
     settings.replyWeightMap = newMap;
+    _clearPoolCache();
     debouncedSave();
 };
 const togglePool = (scene, boxName) => {
@@ -10935,6 +11239,103 @@ const togglePool = (scene, boxName) => {
 const toggleAllInCategory = (scene, catName, boxes) => {
     const anyOn = boxes.some(b => getPoolWeight(scene, b) > 0);
     boxes.forEach(b => setPoolWeight(scene, b, anyOn ? 0 : 50));
+};
+// ===== P2：梦角自由造句 · 语料来源（每会话独立） =====
+const defaultFreeComposeWeightMap = () => ({
+    pools: { '私聊': 50, '公共': 30, '词典': 20 }
+});
+
+const getFreeComposeWeight = (boxName) => {
+    const s = currentSession.value;
+    if (!s) return 0;
+    if (!s.freeComposeWeightMap) s.freeComposeWeightMap = defaultFreeComposeWeightMap();
+    return s.freeComposeWeightMap.pools?.[boxName] || 0;
+};
+const setFreeComposeWeight = (boxName, v) => {
+    const s = currentSession.value;
+    if (!s) return;
+    if (!s.freeComposeWeightMap) s.freeComposeWeightMap = defaultFreeComposeWeightMap();
+    const newMap = JSON.parse(JSON.stringify(s.freeComposeWeightMap));
+    if (!newMap.pools) newMap.pools = {};
+        newMap.pools[boxName] = Math.max(0, Math.min(100, Number(v) || 0));
+    s.freeComposeWeightMap = newMap;
+    _clearPoolCache(s.id);
+    debouncedSave();
+};
+const toggleFreeComposePool = (boxName) => {
+    const cur = getFreeComposeWeight(boxName);
+    setFreeComposeWeight(boxName, cur > 0 ? 0 : 50);
+};
+const toggleAllFreeComposeInCategory = (catName, boxes) => {
+    const anyOn = boxes.some(b => getFreeComposeWeight(b) > 0);
+    boxes.forEach(b => setFreeComposeWeight(b, anyOn ? 0 : 50));
+};
+
+// 从会话的 freeComposeWeightMap 抽一条源句
+const drawFreeComposeCard = (session) => {
+    const s = session || currentSession.value;
+    if (!s) return null;
+    if (!s.freeComposeWeightMap) s.freeComposeWeightMap = defaultFreeComposeWeightMap();
+    const pools = s.freeComposeWeightMap.pools || {};
+    const valid = [];
+    let totalW = 0;
+    Object.entries(pools).forEach(([boxName, weight]) => {
+        if (!weight || weight <= 0) return;
+        const box = isSharedBox(boxName) ? sharedBoxes[boxName] : s.corpus?.boxes?.[boxName];
+        if (!box || !Array.isArray(box.groups)) return;
+        const nonEmpty = box.groups.some(g => Array.isArray(g.replies) && g.replies.length > 0);
+        if (!nonEmpty) return;
+        valid.push({ boxName, weight, box });
+        totalW += weight;
+    });
+    if (!valid.length) return null;
+    let r = Math.random() * totalW;
+    let picked = valid[valid.length - 1];
+    for (const v of valid) {
+        r -= v.weight;
+        if (r <= 0) { picked = v; break; }
+    }
+    const groupsWithCards = (picked.box.groups || []).filter(g => Array.isArray(g.replies) && g.replies.length > 0);
+    if (!groupsWithCards.length) return null;
+    const g = groupsWithCards[Math.floor(Math.random() * groupsWithCards.length)];
+    const enabled = g.replies.filter(x => x.enabled !== false && ((x.text && x.text.trim()) || x.image));
+    if (!enabled.length) return null;
+    const card = enabled[Math.floor(Math.random() * enabled.length)];
+    const text = (card.text || '').trim();
+    return text || null;
+};
+
+
+// ===== 会话卡：最后消息预览 =====
+const lastMessagePreview = (session) => {
+    if (!session || !session.messages || !session.messages.length) return '';
+    const m = session.messages[session.messages.length - 1];
+    if (m.content && m.content.trim()) return m.content;
+    return '[消息]';
+};
+
+// ===== 会话卡：时间格式化（微信风格） =====
+const formatSessionTime = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const ymd = (x) => `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+    const today = ymd(now);
+    const target = ymd(d);
+    if (target === today) return `${p(d.getHours())}:${p(d.getMinutes())}`;
+    const yesterday = ymd(new Date(now.getTime() - 86400000));
+    if (target === yesterday) return '昨天';
+    const dow = now.getDay() === 0 ? 7 : now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dow - 1));
+    monday.setHours(0, 0, 0, 0);
+    if (d >= monday) {
+        const wk = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        return wk[d.getDay()];
+    }
+    const sameYear = d.getFullYear() === now.getFullYear();
+    return sameYear ? `${d.getMonth() + 1}/${d.getDate()}` : `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 };
 
 const hideSession = (sessionId) => {
@@ -11308,20 +11709,20 @@ if (window.lucide) lucide.createIcons();
       bulkForm.show = true;
     };
     // 批量上传图片作表情包字卡
-    const handleExprUpload = (e) => {
+        const handleExprUpload = async (e) => {
       const files = e.target.files;
       if (!files || !files.length) return;
       const g = findGroupById(exprForm.groupId);
       if (!g) return;
       for (const file of files) {
-        const fr = new FileReader();
-        fr.onload = (ev) => {
-          g.replies.push({ id: genId(), text: '', image: ev.target.result, enabled: true });
-          debouncedSave();
-        };
-        fr.readAsDataURL(file);
+        try {
+          const compressed = await compressImage(file, 480, 0.80);
+          g.replies.push({ id: genId(), text: '', image: compressed, enabled: true });
+        } catch (err) { console.error('[字卡图片压缩失败]', err); }
       }
+      debouncedSave();
       nextTick(initSortable);
+      e.target.value = '';
     };
     // 批量加字卡：textarea 一行一条
    const submitBulk = () => {
@@ -11583,6 +11984,130 @@ const openMochiImport = () => {
     };
     input.click();
 };
+// ===== 全局去重（公共 vs 私聊） =====
+const globalDeduplicate = async () => {
+    const sess = currentSession.value;
+    if (!sess) return;
+
+    // 计算一下当前情况
+    const publicBox = sharedBoxes['公共'];
+    const chatBox = sess.corpus?.boxes?.['私聊'];
+    if (!publicBox && !chatBox) { showToast('没有可去重的书册'); return; }
+
+    if (!(await appConfirm(
+        '全局去重规则：\n\n' +
+        '· 公共书册内部：跨卷宗去重\n' +
+        '· 私聊书册内部：跨卷宗去重\n' +
+        '· 私聊里和公共重复的：删除私聊的，保留公共的\n' +
+        '· 精确匹配（区分标点）\n\n' +
+        '确定继续？',
+        '全局去重'
+    ))) return;
+
+    // 1. 先处理公共书册内部跨卷宗去重
+    const publicTexts = new Set();
+    let publicRemoved = 0;
+    if (publicBox && publicBox.groups) {
+        publicBox.groups.forEach(g => {
+            if (!g.replies) return;
+            const unique = [];
+            g.replies.forEach(r => {
+                const t = (r.text || '').trim();
+                if (!t && !r.image) { unique.push(r); return; }
+                if (!t && r.image) {
+                    // 图片字卡：单独按 image 去重
+                    if (!publicTexts.has('__img__' + r.image)) {
+                        publicTexts.add('__img__' + r.image);
+                        unique.push(r);
+                    } else {
+                        publicRemoved++;
+                    }
+                    return;
+                }
+                if (publicTexts.has(t)) {
+                    publicRemoved++;
+                } else {
+                    publicTexts.add(t);
+                    unique.push(r);
+                }
+            });
+            g.replies = unique;
+        });
+    }
+
+    // 2. 处理私聊书册：删除和公共书册重复的 + 私聊内部跨卷宗去重
+    const privateTexts = new Set();
+    let privateRemoved = 0;
+    if (chatBox && chatBox.groups) {
+        chatBox.groups.forEach(g => {
+            if (!g.replies) return;
+            const unique = [];
+            g.replies.forEach(r => {
+                const t = (r.text || '').trim();
+                if (!t && !r.image) { unique.push(r); return; }
+                if (!t && r.image) {
+                    // 图片
+                    if (publicTexts.has('__img__' + r.image) || privateTexts.has('__img__' + r.image)) {
+                        privateRemoved++;
+                    } else {
+                        privateTexts.add('__img__' + r.image);
+                        unique.push(r);
+                    }
+                    return;
+                }
+                // 文本字卡
+                if (publicTexts.has(t) || privateTexts.has(t)) {
+                    privateRemoved++;
+                } else {
+                    privateTexts.add(t);
+                    unique.push(r);
+                }
+            });
+            g.replies = unique;
+        });
+    }
+
+    debouncedSave();
+    nextTick(() => {
+        if (window.lucide) lucide.createIcons();
+        initSortable();
+    });
+    showToast(`去重完成 · 公共删除 ${publicRemoved} 条 · 私聊删除 ${privateRemoved} 条`);
+};
+// ===== 自动切分超过 200 条的卷宗 =====
+const splitLargeGroups = async () => {
+    const sess = currentSession.value;
+    if (!sess) return;
+    const boxName = activeBox.value;
+    const box = isSharedBox(boxName) ? sharedBoxes[boxName] : sess.corpus?.boxes?.[boxName];
+    if (!box || !box.groups) { showToast('当前书册不存在'); return; }
+
+    const MAX = 200;
+    const newGroups = [];
+    let splitCount = 0;
+
+    box.groups.forEach(g => {
+        const replies = g.replies || [];
+        if (replies.length <= MAX) { newGroups.push(g); return; }
+        const parts = Math.ceil(replies.length / MAX);
+        for (let i = 0; i < parts; i++) {
+            newGroups.push({
+                id: genId(),
+                name: `${g.name}(${i + 1})`,
+                replies: replies.slice(i * MAX, (i + 1) * MAX),
+            });
+        }
+        splitCount++;
+    });
+
+    if (splitCount === 0) { showToast('没有需要切分的卷宗（都 ≤200 条）'); return; }
+    if (!(await appConfirm(`发现 ${splitCount} 个卷宗超过 200 条，将自动切分。确定继续？`, '自动切分'))) return;
+
+    box.groups = newGroups;
+    debouncedSave();
+    nextTick(() => { if (window.lucide) lucide.createIcons(); initSortable(); });
+    showToast(`已切分 ${splitCount} 个卷宗`);
+};
 // ===== 智能导入：执行导入 =====
 const executeMochiImport = () => {
     const payload = mochiImportData.value;
@@ -11610,37 +12135,50 @@ const executeMochiImport = () => {
     };
 
     // ===== 分发 1：mochi JSON =====
+       // ===== 分发 1：mochi JSON（导入到当前打开的书册） =====
     if (payload.type === 'json') {
         const data = payload.data;
+        // 目标书册 = 当前打开的书册
+        const targetBoxName = activeBox.value;
+        const targetBox = isSharedBox(targetBoxName) ? sharedBoxes[targetBoxName] : sess.corpus?.boxes?.[targetBoxName];
+        if (!targetBox) { showToast('当前书册不可导入'); return; }
+        const defaultGroupMap = { text: '主字卡', kaomoji: '颜文字', emoji: 'emoji' };
+
         ['ccPub', 'ccOwn'].forEach(key => {
             const lib = data[key];
             if (!lib) return;
-            const targetBoxName = key === 'ccPub' ? '公共' : '私聊';
-            const targetBox = isSharedBox(targetBoxName) ? sharedBoxes[targetBoxName] : sess.corpus?.boxes?.[targetBoxName];
-            if (!targetBox) return;
-            const fieldMap = { text: '主字卡', kaomoji: '颜文字', emoji: 'emoji' };
+
+            // text / kaomoji / emoji → 当前书册，用源分组名建卷宗
             ['text', 'kaomoji', 'emoji'].forEach(field => {
                 const groups = lib[field];
                 if (!Array.isArray(groups) || !groups.length) return;
-                groups.forEach(([, texts]) => {
+                groups.forEach(([srcName, texts]) => {
                     if (!Array.isArray(texts)) return;
+                    let groupName = (srcName || '').trim();
+                    if (!groupName || groupName === '未分组') groupName = defaultGroupMap[field];
                     texts.forEach(text => {
-                        if (pushToBox(targetBox, fieldMap[field], text)) stats[field]++;
+                        if (pushToBox(targetBox, groupName, text)) stats[field]++;
                     });
                 });
             });
+
+            // poke → 拍一拍书册（固定映射）
             const pokeGroups = lib.poke;
             if (Array.isArray(pokeGroups) && pokeGroups.length) {
                 const pokeBox = sess.corpus?.boxes?.['拍一拍'];
                 if (pokeBox) {
-                    pokeGroups.forEach(([, texts]) => {
+                    pokeGroups.forEach(([srcName, texts]) => {
                         if (!Array.isArray(texts)) return;
+                        let groupName = (srcName || '').trim();
+                        if (!groupName || groupName === '未分组') groupName = '默认';
                         texts.forEach(text => {
-                            if (pushToBox(pokeBox, '默认', text)) stats.poke++;
+                            if (pushToBox(pokeBox, groupName, text)) stats.poke++;
                         });
                     });
                 }
             }
+
+            // sticker / image → 我的表情包
             ['sticker', 'image'].forEach(field => {
                 const groups = lib[field];
                 if (!Array.isArray(groups) || !groups.length) return;
@@ -11658,22 +12196,24 @@ const executeMochiImport = () => {
         });
     }
 
-    // ===== 分发 2：mochi JS =====
+    // ===== 分发 2：mochi JS（导入到当前打开的书册） =====
     else if (payload.type === 'js') {
-        const chatBox = sess.corpus?.boxes?.['私聊'];
-        (payload.jsMain || []).forEach(([groupName, texts]) => {
-            if (!Array.isArray(texts)) return;
-            texts.forEach(text => {
-                if (pushToBox(chatBox, groupName || '未分组', text)) stats.jsMain++;
+        const targetBoxName = activeBox.value;
+        const targetBox = isSharedBox(targetBoxName) ? sharedBoxes[targetBoxName] : sess.corpus?.boxes?.[targetBoxName];
+        if (targetBox) {
+            (payload.jsMain || []).forEach(([groupName, texts]) => {
+                if (!Array.isArray(texts)) return;
+                texts.forEach(text => {
+                    if (pushToBox(targetBox, groupName || '未分组', text)) stats.jsMain++;
+                });
             });
-        });
-        const dictBox = sharedBoxes['词典'];
-        (payload.jsDictExt || []).forEach(([groupName, texts]) => {
-            if (!Array.isArray(texts)) return;
-            texts.forEach(text => {
-                if (pushToBox(dictBox, groupName || '未分组', text, { isSystem: false, dictType: 'word' })) stats.jsDictExt++;
+            (payload.jsDictExt || []).forEach(([groupName, texts]) => {
+                if (!Array.isArray(texts)) return;
+                texts.forEach(text => {
+                    if (pushToBox(targetBox, groupName || '未分组', text, { isSystem: false, dictType: 'word' })) stats.jsDictExt++;
+                });
             });
-        });
+        }
     }
 
     // ===== 分发 3：空境三合一 =====
@@ -14311,6 +14851,336 @@ const monthlyBudgetRemain = (monthStr) => {
     currentSession.value.messages = currentSession.value.messages.filter((m) => m.id !== id);
     debouncedSave();
 };
+
+// ===== 一键压缩所有已存图片 =====
+const compressAllImages = async () => {
+    if (!(await appConfirm('扫描所有已存图片，把过大的压缩到合适尺寸？\n\n会检查：头像 / 表情包 / 背景图 / 导航图标 / 字卡图片 / 相册。\n原图会被覆盖（不可撤销，建议先备份）。'))) return;
+
+    const THRESHOLD = 100000; // base64 长度阈值，约 75KB
+    const tasks = [];
+
+    const _add = (get, set, maxSize, quality) => {
+        const src = get();
+        if (src && typeof src === 'string' && src.startsWith('data:') && src.length >= THRESHOLD) {
+            tasks.push({ get, set, maxSize, quality });
+        }
+    };
+    const _forEachBox = (box, boxName) => {
+        if (!box || !Array.isArray(box.groups)) return;
+        const isParted = (boxName === '群聊' || boxName === '红包备注');
+        for (const g of box.groups) {
+            const innerList = isParted ? (g.groups || []) : [g];
+            for (const inner of innerList) {
+                if (!Array.isArray(inner.replies)) continue;
+                inner.replies.forEach((r, i) => {
+                    if (r.image) _add(() => r.image, v => { r.image = v; }, 480, 0.80);
+                });
+            }
+        }
+    };
+
+    // 我的头像
+    _add(() => profiles.me.avatar, v => { profiles.me.avatar = v; }, 256, 0.85);
+
+    // 会话相关
+    sessions.value.forEach((s) => {
+        _add(() => s.avatar, v => { s.avatar = v; }, 256, 0.85);
+        (s.myEmotes || []).forEach((e, i) => {
+            _add(() => s.myEmotes[i], v => { s.myEmotes[i] = v; }, 480, 0.80);
+        });
+        _add(() => s.bgImage, v => { s.bgImage = v; }, 750, 0.75);
+        (s.bgLibrary || []).forEach((b, i) => {
+            _add(() => s.bgLibrary[i], v => { s.bgLibrary[i] = v; }, 750, 0.75);
+        });
+        (s.callBgImages || []).forEach((b, i) => {
+            _add(() => s.callBgImages[i], v => { s.callBgImages[i] = v; }, 750, 0.75);
+        });
+        if (s.navIcons && typeof s.navIcons === 'object') {
+            Object.keys(s.navIcons).forEach(k => {
+                if (s.navIcons[k]) _add(() => s.navIcons[k], v => { s.navIcons[k] = v; }, 128, 0.85);
+            });
+        }
+        if (s.corpus && s.corpus.boxes) {
+            Object.keys(s.corpus.boxes).forEach(bk => _forEachBox(s.corpus.boxes[bk], bk));
+        }
+    });
+
+    // 共享书册
+    Object.keys(sharedBoxes).forEach(bk => _forEachBox(sharedBoxes[bk], bk));
+
+    // 全局设置里的图片
+    _add(() => settings.homeBgImage, v => { settings.homeBgImage = v; }, 750, 0.75);
+    (settings.homeBgLibrary || []).forEach((b, i) => {
+        _add(() => settings.homeBgLibrary[i], v => { settings.homeBgLibrary[i] = v; }, 750, 0.75);
+    });
+    _add(() => settings.checkBgImage, v => { settings.checkBgImage = v; }, 750, 0.75);
+    (settings.checkBgLibrary || []).forEach((b, i) => {
+        _add(() => settings.checkBgLibrary[i], v => { settings.checkBgLibrary[i] = v; }, 750, 0.75);
+    });
+    if (settings.allowanceBg && typeof settings.allowanceBg === 'object') {
+        Object.keys(settings.allowanceBg).forEach(k => {
+            if (settings.allowanceBg[k]) _add(() => settings.allowanceBg[k], v => { settings.allowanceBg[k] = v; }, 750, 0.75);
+        });
+    }
+    _add(() => settings.spacePhoto, v => { settings.spacePhoto = v; }, 750, 0.80);
+    (settings.spacePhotos || []).forEach((p, i) => {
+        _add(() => settings.spacePhotos[i], v => { settings.spacePhotos[i] = v; }, 750, 0.80);
+    });
+
+    // ===== 如果没任务，直接返回 =====
+    if (!tasks.length) {
+        await appAlert('没有需要压缩的图片（都很小）。', '压缩完成');
+        return;
+    }
+
+    // ===== 开始处理（显示 loading）=====
+    compressProgress.total = tasks.length;
+    compressProgress.current = 0;
+    compressProgress.show = true;
+    nextTick(() => { if (window.lucide) lucide.createIcons(); });
+
+    let compressed = 0;
+    let savedBytes = 0;
+
+    for (const t of tasks) {
+        try {
+            const src = t.get();
+            if (src && typeof src === 'string' && src.startsWith('data:')) {
+                const res = await fetch(src);
+                const blob = await res.blob();
+                const file = new File([blob], 'x.jpg', { type: blob.type || 'image/jpeg' });
+                const out = await compressImage(file, t.maxSize, t.quality);
+                if (out && out.length < src.length) {
+                    t.set(out);
+                    compressed++;
+                    savedBytes += (src.length - out.length);
+                }
+            }
+        } catch (e) { console.error('[批量压缩]', e); }
+        compressProgress.current++;
+        // 每处理 1 张让出主线程，保证 UI 刷新
+        await _sleepMs(0);
+    }
+
+    debouncedSave();
+    compressProgress.show = false;
+
+    const savedKB = Math.round(savedBytes / 1024);
+    const savedMB = (savedKB / 1024).toFixed(2);
+    await appAlert(
+        `扫描图片：${tasks.length} 张\n压缩图片：${compressed} 张\n节省空间：约 ${savedKB >= 1024 ? savedMB + ' MB' : savedKB + ' KB'}`,
+        '压缩完成'
+    );
+};
+// ===== 压缩进度状态 =====
+const compressProgress = reactive({
+    show: false,
+    current: 0,
+    total: 0,
+});
+const _sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
+
+// ===== 卡顿自检 =====
+const perfTest = reactive({
+    running: false,
+    progress: 0,      // 0-100
+    report: null,     // { fps, frames, slowFrames, dataSize, sessionStats, imageCount, totalCards }
+    showResult: false,
+});
+let _perfRafId = null;
+
+const _estimateDataSize = () => {
+    try {
+        const raw = localStorage.getItem('__kj_mirror') || '';
+        return raw.length;
+    } catch (e) { return 0; }
+};
+
+const _countImagesInData = () => {
+    let n = 0;
+    const scan = (obj) => {
+        if (!obj) return;
+        if (typeof obj === 'string') { if (obj.startsWith('data:image')) n++; return; }
+        if (Array.isArray(obj)) { obj.forEach(scan); return; }
+        if (typeof obj === 'object') { Object.values(obj).forEach(scan); }
+    };
+    scan(sessions.value);
+    scan(sharedBoxes);
+    scan(settings);
+    return n;
+};
+
+const startPerfTest = async () => {
+    if (perfTest.running) return;
+    perfTest.running = true;
+    perfTest.progress = 0;
+    perfTest.report = null;
+    perfTest.showResult = false;
+    showToast('请正常使用 10 秒…');
+    await _sleepMs(50);
+
+    const start = performance.now();
+    let frames = 0;
+    let slowFrames = 0;
+    let lastT = start;
+    let cancelled = false;
+
+    const tick = (now) => {
+        if (!perfTest.running) return;
+        if (document.hidden) { _perfRafId = requestAnimationFrame(tick); return; }
+        const dt = now - lastT;
+        lastT = now;
+        frames++;
+        if (dt > 33) slowFrames++;
+        const elapsed = now - start;
+        perfTest.progress = Math.min(100, Math.round(elapsed / 100));
+        if (elapsed < 10000) {
+            _perfRafId = requestAnimationFrame(tick);
+        } else {
+            _perfRafId = null;
+            perfTest.running = false;
+            perfTest.progress = 100;
+            const fps = Math.round(frames / (elapsed / 1000));
+            const dropRate = frames ? (slowFrames / frames) * 100 : 0;
+            let level = '流畅';
+            if (dropRate >= 50) level = '重度卡顿';
+            else if (dropRate >= 20) level = '中度卡顿';
+            else if (dropRate >= 5) level = '轻度卡顿';
+
+            // 会话统计
+            const sessionStats = sessions.value.map((s) => {
+                let cardCount = 0;
+                if (s.corpus && s.corpus.boxes) {
+                    Object.keys(s.corpus.boxes).forEach(bk => {
+                        const box = s.corpus.boxes[bk];
+                        if (!box || !Array.isArray(box.groups)) return;
+                        const isParted = (bk === '群聊' || bk === '红包备注');
+                        box.groups.forEach(g => {
+                            const list = isParted ? (g.groups || []) : [g];
+                            list.forEach(inner => { cardCount += (inner.replies || []).length; });
+                        });
+                    });
+                }
+                return { name: s.name, cards: cardCount, msgs: s.messages?.length || 0 };
+            }).sort((a, b) => (b.cards + b.msgs * 5) - (a.cards + a.msgs * 5));
+
+            perfTest.report = {
+                fps,
+                dropRate: Math.round(dropRate),
+                slowFrames,
+                frames,
+                level,
+                dataSize: _estimateDataSize(),
+                imageCount: _countImagesInData(),
+                sessionStats,
+            };
+                        perfTest.showResult = true;
+            nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            showToast('检测完成');
+        }
+    };
+    _perfRafId = requestAnimationFrame(tick);
+};
+
+const stopPerfTest = () => {
+    perfTest.running = false;
+    if (_perfRafId) { cancelAnimationFrame(_perfRafId); _perfRafId = null; }
+};
+
+// 一键优化：清缓存 + 压缩大图
+const runPerfOptimize = async () => {
+    // 立刻关掉报告弹窗，让 loading 立刻可见
+    perfTest.showResult = false;
+    // 1. 清缓存
+    _clearPoolCache();
+    Object.keys(_bgDarkCache).forEach(k => delete _bgDarkCache[k]);
+
+    // 2. 立即弹 loading（先让 UI 渲染，避免"卡住"感）
+    compressProgress.total = 0;
+    compressProgress.current = 0;
+    compressProgress.show = true;
+    nextTick(() => { if (window.lucide) lucide.createIcons(); });
+    await _sleepMs(40);   // 让浏览器先渲染 loading
+
+    const THRESHOLD = 100000;
+    const tasks = [];
+    const _add = (get, set, maxSize, quality) => {
+        const src = get();
+        if (src && typeof src === 'string' && src.startsWith('data:') && src.length >= THRESHOLD) {
+            tasks.push({ get, set, maxSize, quality });
+        }
+    };
+    const _forEachBox = (box, boxName) => {
+        if (!box || !Array.isArray(box.groups)) return;
+        const isParted = (boxName === '群聊' || boxName === '红包备注');
+        box.groups.forEach(g => {
+            const list = isParted ? (g.groups || []) : [g];
+            list.forEach(inner => {
+                (inner.replies || []).forEach((r) => {
+                    if (r.image) _add(() => r.image, v => { r.image = v; }, 480, 0.80);
+                });
+            });
+        });
+    };
+    _add(() => profiles.me.avatar, v => { profiles.me.avatar = v; }, 256, 0.85);
+    sessions.value.forEach((s) => {
+        _add(() => s.avatar, v => { s.avatar = v; }, 256, 0.85);
+        (s.myEmotes || []).forEach((e, i) => _add(() => s.myEmotes[i], v => { s.myEmotes[i] = v; }, 480, 0.80));
+        (s.bgLibrary || []).forEach((b, i) => _add(() => s.bgLibrary[i], v => { s.bgLibrary[i] = v; }, 750, 0.75));
+        (s.callBgImages || []).forEach((b, i) => _add(() => s.callBgImages[i], v => { s.callBgImages[i] = v; }, 750, 0.75));
+        if (s.corpus && s.corpus.boxes) Object.keys(s.corpus.boxes).forEach(bk => _forEachBox(s.corpus.boxes[bk], bk));
+    });
+    Object.keys(sharedBoxes).forEach(bk => _forEachBox(sharedBoxes[bk], bk));
+    (settings.spacePhotos || []).forEach((p, i) => _add(() => settings.spacePhotos[i], v => { settings.spacePhotos[i] = v; }, 750, 0.80));
+
+    compressProgress.total = tasks.length;
+    if (!tasks.length) { compressProgress.show = false; showToast('优化完成，无需压缩图片'); return; }
+    for (const t of tasks) {
+        try {
+            const src = t.get();
+            const res = await fetch(src);
+            const blob = await res.blob();
+            const file = new File([blob], 'x.jpg', { type: blob.type || 'image/jpeg' });
+            const out = await compressImage(file, t.maxSize, t.quality);
+            if (out && out.length < src.length) t.set(out);
+        } catch (e) {}
+        compressProgress.current++;
+        await _sleepMs(0);
+    }
+    compressProgress.show = false;
+    debouncedSave();
+    showToast(`优化完成，共压缩 ${tasks.length} 张图片`);
+};
+// ===== 上传图片自动压缩 =====
+const compressImage = (file, maxSize = 256, quality = 0.85) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    let w = img.width, h = img.height;
+                    if (w > maxSize || h > maxSize) {
+                        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+                        else { w = Math.round(w * maxSize / h); h = maxSize; }
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const out = canvas.toDataURL('image/jpeg', quality);
+                    resolve(out);
+                } catch (e) { reject(e); }
+            };
+            img.onerror = reject;
+            img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
     const editAvatar = async (role) => {
       const s = currentSession.value;
       const isGroup = s && s.type === 'group';
@@ -14321,19 +15191,21 @@ const monthlyBudgetRemain = (monthStr) => {
         else if (s) s.avatar = '';
         return;
       }
-      const input = document.createElement('input');
+            const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      input.onchange = (e) => {
+      input.onchange = async (e) => {
         const file = e.target.files[0];
-        if (file) {
-          const fr = new FileReader();
-          fr.onload = (ev) => {
-            if (targetIsMe) profiles.me.avatar = ev.target.result;
-            else if (s) s.avatar = ev.target.result;
-            debouncedSave();
-          };
-          fr.readAsDataURL(file);
+        if (!file) return;
+        try {
+          const compressed = await compressImage(file, 256, 0.85);
+          if (targetIsMe) profiles.me.avatar = compressed;
+          else if (s) s.avatar = compressed;
+          debouncedSave();
+          showToast('头像已更新');
+        } catch (err) {
+          console.error('[头像压缩失败]', err);
+          showToast('图片处理失败，换一张试试');
         }
       };
       input.click();
@@ -14938,6 +15810,10 @@ if (stored.mailReadStatus) {
 if (stored.freeComposeGroupSettingsMap) {
     Object.assign(freeComposeGroupSettingsMap, stored.freeComposeGroupSettingsMap);
 }
+if (stored.teaseSettingsMap) {
+    Object.assign(teaseSettingsMap, stored.teaseSettingsMap);
+}
+if ((settings.spacePhotos || []).length > 1) startSpacePhotoRotate();
                 if (stored.sessions && stored.sessions.length > 0) {
                     sessions.value = stored.sessions.map((s) => ({
                         ...s,
@@ -14990,6 +15866,9 @@ sessions.value.forEach(s => {
 
 // 老档兼容：补全主动来信 + 回信 + 信封字段
 sessions.value.forEach((s) => {
+    if (!s.freeComposeWeightMap || typeof s.freeComposeWeightMap !== 'object') {
+        s.freeComposeWeightMap = defaultFreeComposeWeightMap();
+    }
     if (s._lastAutoLetterAt === undefined) s._lastAutoLetterAt = 0;
 if (s._nextAutoLetterAt === undefined) s._nextAutoLetterAt = 0;
     if (s._todayLetterCount === undefined) s._todayLetterCount = 0;
@@ -15202,7 +16081,7 @@ removeGroupMember,
       createGroup,
       privateSessions,
       openSession,
-      hideSession,
+      hideSession,lastMessagePreview, formatSessionTime,
       cardTouchStart,
       cardTouchEnd,
       editSessionName,
@@ -15265,7 +16144,8 @@ removeGroupMember,
       handleSend,
       forceReply,
       deleteMsg,
-      editAvatar,
+      editAvatar,compressImage, compressAllImages,compressProgress,
+perfTest, startPerfTest, stopPerfTest, runPerfOptimize,
       shouldShowAvatar,
       senderName,
       senderAvatar,
@@ -15389,7 +16269,7 @@ moneySubTab,
       openDay,
       toggleDay,
       isDayOpen,
-     
+     splitLargeGroups,
       settleFlow,
       settleNext,
       settleBack,
@@ -15608,8 +16488,8 @@ getMailReadIds,
 markMailRead,
 isMailRead,
 mailFilter,
-mailboxTab, letterDraft, openMailboxWrite, sendLetterFromTab, openLetterDivination,
-    inboxList, outboxList, filteredInbox, filteredOutbox, mailSessionOptions,
+mailboxTab, mailSourceScene, letterDraft, openMailboxWrite, sendLetterFromTab, openLetterDivination,
+        inboxList, outboxList, filteredInbox, filteredOutbox, mailSessionOptions, getRepliesForLetter,
 mailDetail, openMailDetail, closeMailDetail,
     toggleFavoriteMail, deleteMailDetail, replyFromMailDetail,clearLetterQuote,favoritedMailList,
     filteredMailList,     // ← 必须有
@@ -15628,7 +16508,9 @@ toggleConcatEmoji,
 adjustConcatCount,
 deleteCurrentSession,
 // Step E
-dailyAppModal, closeDailyAppManage, startAddApp, startEditApp, cancelAppEdit, saveApp, deleteApp,DAILY_CATEGORIES, dailyAddModal, closeDailyAdd, switchDailyAddTab, saveDailyAdd, deleteDailyRecord,dailyBudgetModal, closeDailyBudgetEdit, saveDailyBudget, toggleInstallmentPaid,homePage, onHomeTouchStart, onHomeTouchEnd,spaceMonthName, spaceDay, spaceWeekday, uploadSpacePhoto,
+dailyAppModal, closeDailyAppManage, startAddApp, startEditApp, cancelAppEdit, saveApp, deleteApp,DAILY_CATEGORIES, dailyAddModal, closeDailyAdd, switchDailyAddTab, saveDailyAdd, deleteDailyRecord,dailyBudgetModal, closeDailyBudgetEdit, saveDailyBudget, toggleInstallmentPaid,homePage, onHomeTouchStart, onHomeTouchEnd, spaceMonthName, spaceDay, spaceWeekday,
+      uploadSpacePhoto, removeSpacePhoto, currentSpacePhoto, rotateSpacePhoto,
+      startSpacePhotoRotate, stopSpacePhotoRotate,
 mutedMembers,THEMES, applyTheme,
 spaceTodayStr, spaceInstallmentsToday, spacePeriodDay,
 isMuted,
@@ -15650,6 +16532,7 @@ getGroupFreeComposeSettings, triggerGroupFreeCompose, tryGroupGrabUserMessage,
   settingsTab, replySubTab, boxHasCards,adjustSetting,
       replySettingsGroups, getPoolWeight, setPoolWeight, togglePool, toggleAllInCategory, _joinCardsForDisplay,
 countBoxCards, countCategoryCards, countGroupCards,
+_clearPoolCache,
 muteMember,
 unmuteMember,
 tagPickerOpen,
@@ -15709,8 +16592,10 @@ triggerFreeCompose,
 saveFreeComposedSentence,
 saveFreeComposeSettingsToAll,
 freeComposeGroupSettingsMap,
-getFreeComposeGroupSettings,
-exportDialogOpen,
+getFreeComposeGroupSettings,setFreeComposeWeight, toggleFreeComposePool,
+      toggleAllFreeComposeInCategory, drawFreeComposeCard, defaultFreeComposeWeightMap,
+ getFreeComposeWeight, exportDialogOpen,
+     
 exportSelectedBoxes,
 openExportDialog,
 exportSelectCurrent,
@@ -15750,6 +16635,7 @@ ymdToMonth,
 installmentForMonth,
 monthlyInstallmentTotal,
 monthlyBudgetRemain,
+globalDeduplicate,
       deleteEnvelope
     };
   },
