@@ -12391,27 +12391,44 @@ const composeMethod0 = (src) => {
 // ===== 手法 1：换词式 =====
 const composeMethod2a = (src, session) => {
     if (src.length < 4) return null;
-    const start = Math.floor(Math.random() * (src.length - 2));
-    const len = 2 + Math.floor(Math.random() * 3);  // 2~4 字
-    const end = Math.min(start + len, src.length);
-    const replacement = drawWordFromAllBoxes(session);
-    if (!replacement) return null;
-    const result = src.slice(0, start) + replacement + src.slice(end);
-    return result !== src ? result : null;
+    const MAX_CUT = 3, MAX_PICK = 3;
+    // 骰：截断位置满意吗？满意才去抽卡；抽到的卡合适吗？都过了才算一次换词成功
+    for (let ct = 0; ct < MAX_CUT; ct++) {
+        const start = Math.floor(Math.random() * (src.length - 2));
+        const len = 2 + Math.floor(Math.random() * 3);  // 2~4 字
+        const end = Math.min(start + len, src.length);
+        if (!_rollYes(YES_NO_BASE.CUT_OK)) continue;    // 不满意 → 重新截
+        for (let pt = 0; pt < MAX_PICK; pt++) {
+            const replacement = drawWordFromAllBoxes(session);
+            if (!replacement) continue;
+            if (!_rollYes(YES_NO_BASE.CARD_OK)) continue;   // 这张卡不合适 → 重抽
+            const result = src.slice(0, start) + replacement + src.slice(end);
+            return result !== src ? result : null;
+        }
+    }
+    return null;
 };
 
 // ===== 手法 2：换句式 =====
 const composeMethod2b = (src, session) => {
     if (src.length < 6) return null;
-    const start = Math.floor(Math.random() * (src.length - 4));
-    const maxLen = src.length - start - 2;
-    if (maxLen < 2) return null;
-    const len = 4 + Math.floor(Math.random() * Math.min(8, maxLen - 2));
-    const end = Math.min(start + len, src.length);
-    const replacement = drawSentenceOrWordFromAllBoxes(session);
-    if (!replacement) return null;
-    const result = src.slice(0, start) + replacement + src.slice(end);
-    return result !== src ? result : null;
+    const MAX_CUT = 3, MAX_PICK = 3;
+    for (let ct = 0; ct < MAX_CUT; ct++) {
+        const start = Math.floor(Math.random() * (src.length - 4));
+        const maxLen = src.length - start - 2;
+        if (maxLen < 2) continue;
+        const len = 4 + Math.floor(Math.random() * Math.min(8, maxLen - 2));
+        const end = Math.min(start + len, src.length);
+        if (!_rollYes(YES_NO_BASE.CUT_OK)) continue;    // 骰：这个截断位置满意吗
+        for (let pt = 0; pt < MAX_PICK; pt++) {
+            const replacement = drawSentenceOrWordFromAllBoxes(session);
+            if (!replacement) continue;
+            if (!_rollYes(YES_NO_BASE.CARD_OK)) continue;   // 骰：这句/这张合适吗
+            const result = src.slice(0, start) + replacement + src.slice(end);
+            return result !== src ? result : null;
+        }
+    }
+    return null;
 };
 
 // ===== 统一入口 =====
@@ -13488,102 +13505,121 @@ const triggerRetractPlay = (session) => {
     if (Math.random() >= (rs.retractTriggerProb || 0.5)) return false;
 
     // 抽 2~3 条字卡（默认多条）
-    const pool = drawWeightedCards(session, '私聊', 30);
-    if (!pool.length) return false;
-    const N = Math.min(2 + Math.floor(Math.random() * 2), pool.length);
-    const picked = [];
-    const copy = [...pool];
-    for (let i = 0; i < N && copy.length; i++) {
-        const idx = Math.floor(Math.random() * copy.length);
-        picked.push(copy[idx]);
-        copy.splice(idx, 1);
-    }
+    const _pickCards = () => {
+        const pool = drawWeightedCards(session, '私聊', 30);
+        if (!pool.length) return [];
+        const N = Math.min(2 + Math.floor(Math.random() * 2), pool.length);
+        const out = [];
+        const copy = [...pool];
+        for (let i = 0; i < N && copy.length; i++) {
+            const idx = Math.floor(Math.random() * copy.length);
+            out.push(copy[idx]);
+            copy.splice(idx, 1);
+        }
+        return out;
+    };
 
     // ===== 撤回模式 =====
     //  1 = 抽卡 → 撤回 → 直接发送（不造句）
     //  2 = 抽卡 → 造句 → 撤回 → 发送
     //  3 = 抽卡 → 先撤回 → 再造句 → 发送（两条随机分支）
     //  4 = 以上 1/2/3 随机
-    // 撤回手法：统一走"混合"（retractSentence 内部按查表随机 1/2，不再掷骰子）
-    let mode = rs.retractMode || 1;
-    if (mode === 4) mode = 1 + Math.floor(Math.random() * 3);
+    const _pickMode = () => {
+        let m = rs.retractMode || 1;
+        if (m === 4) m = 1 + Math.floor(Math.random() * 3);
+        return m;
+    };
     const method = 3;
 
-    const remainingParts = [];
-    const removedList = [];
+    // 跑一轮：返回 { finalText, removedList } 或 null
+    const _rollOneRound = (picked, mode) => {
+        const remainingParts = [];
+        const removedList = [];
 
-    // 每条字卡三选一：整撤 / 半撤 / 不撤
-    const rollOne = (text) => {
-        const t = (text || '').trim();
-        if (!t) return;
-        const r = Math.random();
-        if (r < 1 / 3) {
-            // 整撤
-            removedList.push(t);
-        } else if (r < 2 / 3) {
-            // 半撤
-            const ret = retractSentence(t, method);
-            if (ret && ret.remaining) {
-                remainingParts.push(ret.remaining);
-                removedList.push(ret.removed || t);
-            } else {
-                removedList.push(t); // 撤不动 → 当整撤
-            }
-        } else {
-            // 不撤
-            remainingParts.push(t);
-        }
-    };
-
-    if (mode === 1) {
-        // 单独撤回：不造句
-        picked.forEach(item => rollOne(item.text));
-    } else if (mode === 2) {
-        // 先造句，再撤回
-        picked.forEach(item => {
-            const t = (item.text || '').trim();
+        // 每条字卡三选一：整撤 / 半撤 / 不撤
+        const rollOne = (text) => {
+            const t = (text || '').trim();
             if (!t) return;
-            const composed = composeSentence(t, session);
-            rollOne(composed || t);   // 造句失败 → 退回原句（第 2 点拍板）
-        });
-    } else if (mode === 3) {
-        // 先撤回，再造句：两条随机分支
-        picked.forEach(item => rollOne(item.text));
-        if (Math.random() < 0.5) {
-            // 分支 A：所有碎片合成一句，再造句
-            if (remainingParts.length) {
-                const merged = remainingParts.join('  ');
-                const composed = composeSentence(merged, session);
-                if (composed) {
-                    remainingParts.length = 0;
-                    remainingParts.push(composed);
+            const r = Math.random();
+            if (r < 1 / 3) {
+                removedList.push(t);                       // 整撤
+            } else if (r < 2 / 3) {
+                const ret = retractSentence(t, method);    // 半撤
+                if (ret && ret.remaining) {
+                    remainingParts.push(ret.remaining);
+                    removedList.push(ret.removed || t);
+                } else {
+                    removedList.push(t);
                 }
+            } else {
+                remainingParts.push(t);                    // 不撤
             }
-        } else {
-            // 分支 B：随机挑一条碎片造句，其余保留
-            if (remainingParts.length) {
+        };
+
+        if (mode === 1) {
+            picked.forEach(item => rollOne(item.text));
+        } else if (mode === 2) {
+            // 先造句，再撤回（造句内部现在带"截断满意 / 选卡合适"骰）
+            picked.forEach(item => {
+                const t = (item.text || '').trim();
+                if (!t) return;
+                const composed = composeSentence(t, session);
+                rollOne(composed || t);
+            });
+        } else if (mode === 3) {
+            picked.forEach(item => rollOne(item.text));
+            if (Math.random() < 0.5) {
+                if (remainingParts.length) {
+                    const merged = remainingParts.join('  ');
+                    const composed = composeSentence(merged, session);
+                    if (composed) {
+                        remainingParts.length = 0;
+                        remainingParts.push(composed);
+                    }
+                }
+            } else if (remainingParts.length) {
                 const i = Math.floor(Math.random() * remainingParts.length);
                 const composed = composeSentence(remainingParts[i], session);
                 if (composed) remainingParts[i] = composed;
             }
         }
+
+        if (!removedList.length) return null;   // 全都"不撤" → 这轮不算撤回
+
+        let finalText = remainingParts.join('  ');
+        if (!finalText) {
+            const extra = drawSentenceOrWordFromAllBoxes(session);
+            if (extra) finalText = extra.trim();
+        }
+        return { finalText, removedList };
+    };
+
+    let picked = _pickCards();
+    if (!picked.length) return false;
+    let mode = _pickMode();
+    let round = _rollOneRound(picked, mode);
+    if (!round) return false;
+
+    // ===== 确认发送（两步化）=====
+    // 骰：这一轮发得出去吗？不发 → 骰怎么重来（各 50%）
+    if (!_rollYes(YES_NO_BASE.RETRACT_SEND)) {
+        if (Math.random() < 0.5) {
+            // 分支 1：全部推翻重来（重新抽卡 + 重骰手法）
+            const picked2 = _pickCards();
+            round = picked2.length ? _rollOneRound(picked2, _pickMode()) : null;
+        } else {
+            // 分支 2：保手法重造（同一批卡、同一手法，只重新造句）
+            round = _rollOneRound(picked, mode);
+        }
+        if (!round) return false;
     }
 
-    if (!removedList.length) return false; // 全都"不撤" → 不算撤回，让原流程走
-
-    // 拼接随机一条句子（第 2 点拍板）：仅当"有撤回、但剩余碎片为空"时补一条
-    let finalText = remainingParts.join('  ');
-    if (!finalText) {
-        const extra = drawSentenceOrWordFromAllBoxes(session);
-        if (extra) finalText = extra.trim();
-    }
-
-    sendMessage('them', finalText || ' ', {
+    sendMessage('them', round.finalText || ' ', {
         session,
         retracted: true,
-        originalContents: removedList,
+        originalContents: round.removedList,
     });
-    if (finalText) saveFreeComposedSentence(finalText, session);
+    if (round.finalText) saveFreeComposedSentence(round.finalText, session);
     return true;
 };
   
@@ -18386,10 +18422,31 @@ const _collectForeignCards = (s) => {
 };
 
 let _freeComposeBackspaces = 0;   // 最近一次生成里"退格重选"的次数
+// ===== 是否骰子（B86）=====
+// 老板要的模型：每个「是否」不写死概率，而是当场摇两次：
+//   ① 摇出"这次的概率"（0~base）
+//   ② 再摇一次看是否落入
+// base=100 → 均值 50%（方案 A）。将来想降成 B 方案，只改这里的 base，逻辑不用动。
+const YES_NO_BASE = {
+    BACKSPACE: 100,     // 拼音：这个字要不要退格重选
+    PUNCT: 100,         // 拼音：这一段要不要加标点
+    CONTINUE: 100,      // 拼音：还要不要继续说下一段
+    SEND_CONFIRM: 100,  // 确认发送（false = 不满意，重来）
+    CUT_OK: 100,        // 造句：截断位置满意吗
+    CARD_OK: 100,       // 造句：抽到的字卡合适吗
+    RETRACT_SEND: 100,  // 撤回：这一轮发不发出
+};
+const _rollYes = (base) => {
+    const b = Math.max(0, Math.min(100, Number(base == null ? 100 : base))) / 100;
+    if (b <= 0) return false;
+    const th = b * Math.random();      // ① 这次的概率
+    return Math.random() < th;         // ② 是否落入
+};
+
 const _makeFreeComposeText = (s) => {
     const MAX_SEGS = 5;
     const SEG_MIN = 2, SEG_MAX = 5;
-    const PUNCT_PROB = 0.4;   // 段长≥3 时加标点的概率
+    const MAX_SEND_RETRY = 2;     // 确认发送不满意 → 重来几次
     _freeComposeBackspaces = 0;   // 本次生成的退格次数（影响打字耗时）
 
     // ===== ⭐ 外文分支（优先）：按概率抽外文常用词，带中文翻译 =====
@@ -18418,33 +18475,44 @@ const _makeFreeComposeText = (s) => {
         }
     }
 
-    const segments = [];
-    for (let segIdx = 0; segIdx < MAX_SEGS; segIdx++) {
-        const len = SEG_MIN + Math.floor(Math.random() * (SEG_MAX - SEG_MIN + 1));
-        const units = [];
-        for (let i = 0; i < len; i++) {
-            let u = _rollOneUnit();
-            // 退格模拟：先骰一个 0~100 的阈值，再骰一次看是否落入
-            // 落入 → 退格、重新选这个字（同时让发送前的打字耗时变长）
-            const th = Math.random() * 100;
-            if (Math.random() * 100 < th) {
-                u = _rollOneUnit();
-                _freeComposeBackspaces++;
+    // ===== 中文分支：一段一段骰 =====
+    // 每段：骰段长 → 每字骰（声母/韵母/选字/退格）→ 骰标点 → 骰是否继续说
+    const buildOnce = () => {
+        const segments = [];
+        for (let segIdx = 0; segIdx < MAX_SEGS; segIdx++) {
+            const len = SEG_MIN + Math.floor(Math.random() * (SEG_MAX - SEG_MIN + 1));   // 骰：这段几字
+            const units = [];
+            for (let i = 0; i < len; i++) {
+                let u = _rollOneUnit();                                  // 骰：声母 + 韵母 + 选字（3 次）
+                if (_rollYes(YES_NO_BASE.BACKSPACE)) {                   // 骰：要不要退格（2 次）
+                    u = _rollOneUnit();                                  //   退格 → 重选这个字
+                    _freeComposeBackspaces++;
+                }
+                if (u) units.push(u);
             }
-            if (u) units.push(u);
-        }
-        if (!units.length) break;
+            if (!units.length) break;
 
-        let punct = '';
-        if (units.length >= 3 && Math.random() < PUNCT_PROB) {
-            punct = CHATTY_PUNCT_ROW[Math.floor(Math.random() * CHATTY_PUNCT_ROW.length)];
-        }
-        segments.push({ units, punct });
+            let punct = '';
+            if (units.length >= 3 && _rollYes(YES_NO_BASE.PUNCT)) {       // 骰：这段加不加标点（2 次）
+                punct = CHATTY_PUNCT_ROW[Math.floor(Math.random() * CHATTY_PUNCT_ROW.length)];   // 骰：哪个标点
+            }
+            segments.push({ units, punct });
 
-        if (!punct) break;   // 没加标点 → 结束
+            if (segIdx >= MAX_SEGS - 1) break;
+            if (!_rollYes(YES_NO_BASE.CONTINUE)) break;                   // 骰：还要继续说吗（2 次）
+        }
+        return segments.length ? { segments } : null;
+    };
+
+    // 骰：确认发送？不满意就全删重写（重来时不重置退格数——那些字确实打过）
+    let last = null;
+    for (let attempt = 0; attempt <= MAX_SEND_RETRY; attempt++) {
+        last = buildOnce();
+        if (!last) return null;
+        if (_rollYes(YES_NO_BASE.SEND_CONFIRM)) return last;
     }
-    if (!segments.length) return null;
-    return { segments };
+    // 重来几次都不满意 → 还是把最后一次发出去（总比什么都不发好）
+    return last;
 };
 
 const _pushFreeComposeToChat = (s, free, opts) => {
