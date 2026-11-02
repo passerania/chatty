@@ -670,32 +670,16 @@ body { color: var(--color-text); }
     font-weight: 500;
 }
 
-    /* ===== 排版引擎 B120：三套 UI（全部走主题变量，不写死颜色） ===== */
-    /* 瓦利亚：切角 */
-    .varia-cut {
-        clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
-    }
-    /* 瓦利亚：HUD 四角准星 */
-    .hud-corner { position: absolute; width: 8px; height: 8px; border-color: var(--color-muted); border-style: solid; opacity: 0.6; }
-    .corner-tl { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
-    .corner-tr { top: -1px; right: -1px; border-width: 1px 1px 0 0; }
-    .corner-bl { bottom: -1px; left: -1px; border-width: 0 0 1px 1px; }
-    .corner-br { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
-    /* 瓦利亚：扫描线 */
-    .scanline {
-        position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        background: linear-gradient(90deg, transparent, var(--nav-icon-color), transparent);
-        animation: scan 3s linear infinite; opacity: 0.4; pointer-events: none;
-    }
-    @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
-    /* 彭格列：衬线字体 */
+    /* ===== 彭格列排版引擎（副本2 专属，全部走主题变量，不写死颜色） ===== */
     .font-vongola { font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif; }
-    /* 彭格列：纸张内阴影 */
     .paper-shadow { box-shadow: inset 0 0 10px rgba(0,0,0,0.02), 0 2px 6px rgba(0,0,0,0.03); }
-    /* 彭格列：信纸横线 */
     .letter-lines {
         background-image: repeating-linear-gradient(transparent, transparent 27px, var(--color-border) 28px);
         line-height: 28px;
+    }
+    .vongola-seal {
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        border: 1px solid var(--color-border);
     }
 
      </style>
@@ -850,10 +834,16 @@ body { color: var(--color-text); }
                         </button>
                     </div>
                 </div>
+                <!-- 彭格列：手帐日期行 -->
+                <div class="flex items-center gap-2 px-1 mb-2 font-vongola">
+                    <span class="text-[11px] text-muted tracking-[0.25em]">MEMORIA</span>
+                    <span class="flex-1 h-[1px]" style="background: var(--color-border);"></span>
+                    <span class="text-[11px] text-muted tracking-[0.2em]">{{ (visibleSessions || []).length }} 位</span>
+                </div>
                 <!-- 搜索框（常驻） -->
                 <div class="mb-3">
-                    <input ref="homeSearchInput" v-model="homeSearchKeyword" type="text" placeholder="搜索"
-                           class="w-full px-3 py-2 rounded-lg bg-surface/70 border border-border/50 text-[14px] outline-none focus:border-[var(--nav-icon-color)]" style="color:var(--color-text);" />
+                    <input ref="homeSearchInput" v-model="homeSearchKeyword" type="text" placeholder="检索信笺…"
+                           class="w-full px-3 py-2 rounded-md bg-surface paper-shadow border border-border/50 text-[13px] outline-none focus:border-[var(--nav-icon-color)] font-vongola" style="color:var(--color-text);" />
                 </div>
                 <!-- 加号菜单 -->
                 <div v-if="homePlusMenuOpen" class="relative mb-3 flex justify-end">
@@ -864,32 +854,33 @@ body { color: var(--color-text); }
                     </div>
                 </div>
               <!-- 建筑卡片列表：纵向滚动，每张卡一栋建筑 -->
-              <div class="flex-1 overflow-y-auto px-4 py-2 pb-20 space-y-2 min-h-0" ref="homeListEl">
+              <div class="flex-1 overflow-y-auto px-2 py-2 pb-20 space-y-1.5 min-h-0" ref="homeListEl">
                     <div v-for="session in visibleSessions" :key="session.id" :ref="el => setCardRef(session.id, el)"
      @click="openSession(session.id)"
      @contextmenu.prevent="hideSession(session.id)"
      @touchstart="cardTouchStart($event, session.id)" @touchend="cardTouchEnd" @touchmove="cardTouchEnd"
-     class="flex items-center gap-3 px-3 py-3 border border-border/40 cursor-pointer transition select-none relative"
-     :class="[uiCardClass(), { 'home-card-highlight': highlightId === session.id }]"
-     :style="uiCardStyle()">
-    <!-- 头像 -->
-    <div class="shrink-0 w-12 h-12 overflow-hidden bg-surface border border-border/50 flex items-center justify-center" :class="uiAvatarClass()">
-        <img v-if="session.avatar" :src="session.avatar" class="w-full h-full object-cover">
-        <span v-else class="text-[18px] text-muted serif-text">{{ (session.name || '?').charAt(0) }}</span>
+     class="flex items-center gap-3 px-3.5 py-3.5 my-1.5 rounded-r-lg rounded-l-sm bg-surface paper-shadow border border-border/40 border-l-4 cursor-pointer hover:bg-bg transition select-none relative font-vongola letter-lines"
+     :class="{ 'home-card-highlight': highlightId === session.id }"
+     style="border-left-color: var(--nav-icon-color);">
+    <!-- 头像：火漆印章式（细环 + 内圆）-->
+    <div class="shrink-0 w-12 h-12 rounded-full border border-border/60 p-0.5 vongola-seal flex items-center justify-center">
+        <div class="w-full h-full rounded-full overflow-hidden bg-bg flex items-center justify-center">
+            <img v-if="session.avatar" :src="session.avatar" class="w-full h-full object-cover">
+            <span v-else class="text-[16px] text-text font-vongola">{{ (session.name || '?').charAt(0) }}</span>
+        </div>
     </div>
     <!-- 中间 -->
     <div class="flex-1 min-w-0">
         <div class="flex items-center gap-1.5 mb-0.5">
-            <span class="text-[15px] text-text truncate" :class="uiNameClass()">{{ session.name }}</span>
+            <span class="text-[15px] text-text truncate font-vongola tracking-widest">{{ session.name }}</span>
         </div>
-        <div class="text-[13px] text-muted truncate">{{ lastMessagePreview(session) || '暂无消息' }}</div>
+        <div class="text-[12px] text-muted/80 truncate font-vongola font-light">{{ lastMessagePreview(session) || '暂无消息' }}</div>
     </div>
     <!-- 右侧 -->
     <div class="shrink-0 flex flex-col items-end gap-1.5">
-        <span class="text-[11px] text-muted tabular-nums">{{ formatSessionTime(session.messages.length ? session.messages[session.messages.length - 1].timestamp : 0) }}</span>
+        <span class="text-[10px] text-muted tabular-nums font-vongola italic">{{ formatSessionTime(session.messages.length ? session.messages[session.messages.length - 1].timestamp : 0) }}</span>
         <span v-if="unreadOf(session) > 0"
-              class="min-w-[18px] h-[18px] px-1.5 text-[11px] text-white flex items-center justify-center font-medium"
-              :class="uiBadgeClass()"
+              class="min-w-[18px] h-[18px] px-1.5 rounded-full text-[11px] text-white flex items-center justify-center font-medium font-vongola"
               style="background: var(--nav-icon-color);">
             {{ unreadOf(session) > 99 ? '99+' : unreadOf(session) }}
         </span>
@@ -948,13 +939,15 @@ body { color: var(--color-text); }
 
             <!-- 照片卡 -->
                         <!-- 照片卡（相册轮播） -->
-            <label class="block relative w-full rounded-2xl overflow-hidden mb-4 cursor-pointer group" style="aspect-ratio: 16/9; background: rgba(0,0,0,0.04);">
-                <img v-if="currentSpacePhoto" :src="currentSpacePhoto" class="absolute inset-0 w-full h-full object-cover">
-                <div v-else class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted/50">
+                    <!-- 照片卡：拍立得 -->
+            <label class="block relative w-full rounded-xl paper-shadow border border-border/30 mb-4 cursor-pointer group p-2 pb-7 bg-surface" style="aspect-ratio: 16/9;">
+                <img v-if="currentSpacePhoto" :src="currentSpacePhoto" class="w-full h-full object-cover rounded-sm border border-border/50">
+                <div v-else class="absolute inset-2 bottom-7 flex flex-col items-center justify-center gap-1.5 text-muted/50 bg-bg rounded-sm">
                     <i data-lucide="image" class="w-5 h-5"></i>
-                    <div class="text-[12px] tracking-widest">收藏，和你有关的瞬间</div>
-                    <div class="text-[10px] opacity-70">轻点放入一张照片（可多选）</div>
+                    <div class="text-[12px] tracking-widest font-vongola">收藏，和你有关的瞬间</div>
+                    <div class="text-[10px] opacity-70 font-vongola">轻点放入一张照片（可多选）</div>
                 </div>
+                <div class="absolute bottom-1.5 right-3 text-[10px] text-muted font-vongola italic">Memory</div>
                 <input type="file" accept="image/*" multiple class="hidden" @change="uploadSpacePhoto">
                 <div v-if="(settings.spacePhotos || []).length > 1"
                      class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">
@@ -1035,18 +1028,18 @@ body { color: var(--color-text); }
 </div>
                 <!-- ===== 第 3 页：软件 ===== -->
         <div class="w-full h-full shrink-0 overflow-y-auto px-6 pt-20 pb-24">
-            <div class="text-[11px] tracking-[0.3em] text-muted/70 mb-5 px-1">APPS</div>
+            <div class="text-[11px] tracking-[0.3em] text-muted/70 mb-5 px-1 font-vongola">APPS</div>
             <div id="apps-grid" class="grid grid-cols-4 gap-x-2 gap-y-5">
                 <div v-for="app in settings.apps" :key="app.id"
                      @click="switchView(app.view)"
                      @contextmenu.prevent="removeApp(app.id)"
                      @touchstart="onAppPressStart(app)" @touchend="onAppPressEnd" @touchmove="onAppPressEnd"
-                     class="flex flex-col items-center gap-1.5 cursor-pointer select-none">
-                    <div class="w-14 h-14 rounded-[22%] flex items-center justify-center"
-                         style="background: rgba(255,255,255,0.55); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.65); box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
-                        <i :data-lucide="app.icon" class="w-6 h-6 text-text"></i>
+                     class="flex flex-col items-center gap-1.5 cursor-pointer select-none group">
+                    <div class="w-14 h-14 rounded-sm flex items-center justify-center relative border border-border/50 bg-surface paper-shadow transition-transform group-hover:-translate-y-1">
+                        <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-sm" style="background: var(--nav-icon-color); opacity:.25;"></div>
+                        <i :data-lucide="app.icon" class="w-6 h-6 text-text/80"></i>
                     </div>
-                    <span class="text-[11px] text-text/80 tracking-wider truncate max-w-full">{{ app.label }}</span>
+                    <span class="text-[11px] text-text/70 truncate max-w-full font-vongola tracking-widest">{{ app.label }}</span>
                 </div>
                                 <!-- chatty -->
                 <div @click="openChattyInstall" class="flex flex-col items-center gap-1.5 cursor-pointer select-none">
@@ -1733,36 +1726,6 @@ body { color: var(--color-text); }
                                             <i data-lucide="mail" class="w-4 h-4 text-muted mb-1"></i>
                                             <span class="text-[11px] text-muted tracking-widest">留言板</span>
                                         </button>
-                                    </div>
-                                </div>
-                                <!-- ===== 手机推送（B123）===== -->
-                                <div>
-                                    <div class="text-[12px] text-muted tracking-widest mb-2">手机推送</div>
-                                    <div class="bg-bg/50 rounded-xl p-3 space-y-2.5 border border-border/30">
-                                        <div class="flex items-center justify-between">
-                                            <span class="text-[13px]">页面在后台时推到手机</span>
-                                            <button @click="settings.pushEnabled = !settings.pushEnabled; debouncedSave();"
-                                                    class="w-10 h-5 rounded-full relative"
-                                                    :class="settings.pushEnabled ? 'bg-text' : 'bg-border'">
-                                                <div class="absolute top-1 left-1 w-3 h-3 bg-surface rounded-full transition-transform"
-                                                     :class="settings.pushEnabled ? 'translate-x-5' : 'translate-x-0'"></div>
-                                            </button>
-                                        </div>
-                                        <input v-model="settings.pushUrl" @change="debouncedSave()"
-                                               type="text" placeholder="https://api.day.app/你的KEY"
-                                               class="w-full px-3 py-2 rounded-lg bg-surface border border-border text-[12px] outline-none"
-                                               style="color: var(--color-text);">
-                                        <div class="flex gap-2">
-                                            <button @click="testPush()"
-                                                    class="flex-1 py-1.5 rounded-lg border border-border text-[12px]">测试推送</button>
-                                            <a href="https://apps.apple.com/app/bark-customed-notifications/id1403753865"
-                                               target="_blank" rel="noopener"
-                                               class="flex-1 py-1.5 rounded-lg border border-border text-[12px] text-center">下载 Bark</a>
-                                        </div>
-                                        <div class="text-[11px] text-muted/70 leading-relaxed">
-                                            装 Bark App 后复制它给你的地址（含 KEY）填上面。<br>
-                                            只有页面还在后台运行时才会推；被系统杀掉就不行了。
-                                        </div>
                                     </div>
                                 </div>
                                 <!-- ===== 需求 B：TA 的语言（回应字卡用）===== -->
@@ -11844,7 +11807,6 @@ const exportSelectedBoxes = ref([]);
     const _cloneGrammarTplDefault = (k) => (GRAMMAR_TPL_DEFAULT[k] || []).slice();
     const settings = reactive({
       darkMode: false,
-      uiLayout: 'default',    // 排版引擎（B120）：'default' 原有 / 'varia' 瓦利亚机能风 / 'vongola' 彭格列信笺风
       visualStyle: '',        // 视觉方案：''=默认 / frosted=磨砂玻璃 / glass=毛玻璃 / clear=透明 / wechat=仿微信
       mainTypingProb: 0.2,    // 主回复拼音打字玩法的触发概率（0 = 关闭）
       foreignCardProb: 0.15,  // 外文语料（意/日）在自由组合里的占比，默认 15%
@@ -14922,12 +14884,6 @@ const newMsg = {
           _showAppBanner(target, content || (isImage ? '[图片]' : ''));
         }
       } catch (e) {}
-      // 页面在后台 / 锁屏时，推到手机（Bark）
-      try {
-        if (sender !== 'me' && sender !== 'system' && !opts.blank && document.hidden) {
-          _pushToPhone(target, content || (isImage ? '[图片]' : ''));
-        }
-      } catch (e) {}
       // 打字机逐字动画已移除（移动端易卡）：消息直接完整显示
       newMsg.content = content;
       // 消息 DOM 新增后重绘 lucide 图标
@@ -15825,35 +15781,6 @@ const playOn = (k) => {
 // 每个玩法那一行右边的 › 展开按钮（B99）
 const playOpen = reactive({});
 const togglePlayOpen = (k) => { playOpen[k] = !playOpen[k]; };
-
-// ===== 排版引擎（B120）：三套 UI 的 class 生成器 =====
-// 全部只返回主题变量相关的 Tailwind 类，不写死颜色
-const uiLayoutNow = () => settings.uiLayout || 'default';
-const uiCardClass = () => {
-    const L = uiLayoutNow();
-    if (L === 'varia') return 'rounded-none font-mono bg-surface border-border/60 hover:bg-bg';
-    if (L === 'vongola') return 'rounded-r-xl rounded-l-sm mx-3 my-2 bg-surface paper-shadow border-border/40 border-l-4';
-    return 'rounded-2xl bg-surface/60 hover:bg-surface';
-};
-const uiCardStyle = () => (uiLayoutNow() === 'vongola' ? 'border-left-color: var(--nav-icon-color);' : '');
-const uiAvatarClass = () => {
-    const L = uiLayoutNow();
-    if (L === 'varia') return 'rounded-none';
-    if (L === 'vongola') return 'rounded-full border-border/60 p-0.5';
-    return 'rounded-xl';
-};
-const uiNameClass = () => {
-    const L = uiLayoutNow();
-    if (L === 'varia') return 'font-mono tracking-wider';
-    if (L === 'vongola') return 'font-vongola tracking-widest';
-    return 'font-medium';
-};
-const uiBadgeClass = () => {
-    const L = uiLayoutNow();
-    if (L === 'varia') return 'rounded-none';
-    if (L === 'vongola') return 'rounded-full';
-    return 'rounded-full';
-};
 const togglePlay = (k) => {
     if (!settings.playToggles || typeof settings.playToggles !== 'object') settings.playToggles = {};
     settings.playToggles[k] = !playOn(k);
@@ -16297,9 +16224,22 @@ const opts = { marked, session: cur };
 
     const _captureAreaEl = () => document.getElementById('capture-area');
 
+    // iOS Safari 的 canvas 单边上限约 4096，超出直接出白图/失败
+    // 所以按内容高度反推缩放：短内容保持清晰，长内容自动降清（B124）
+    const SHOT_MAX_SIDE = 4000;
+    const _autoShotScale = (h, w) => {
+      const longest = Math.max(h || 1, w || 1);
+      return Math.max(0.35, Math.min(1.2, SHOT_MAX_SIDE / longest));
+    };
+
     const _renderCapture = (extra = {}) => {
       const el = _captureAreaEl();
       if (!el) return Promise.reject(new Error('no capture area'));
+      // 没显式给 scale 时，按裁剪高度自动算，避免超出 canvas 上限
+      const merged = Object.assign({}, extra);
+      if (merged.scale === undefined) {
+        merged.scale = _autoShotScale(merged.height || el.scrollHeight, el.offsetWidth);
+      }
       // 临时关掉阴影/模糊/动画：html2canvas 不用再算这些，速度明显变快
       document.body.classList.add('shot-simplify');
       return new Promise((resolve, reject) => {
@@ -16307,11 +16247,10 @@ const opts = { marked, session: cur };
         requestAnimationFrame(() => {
           html2canvas(el, Object.assign({
             backgroundColor: settings.darkMode ? '#0d0d0f' : '#f7f7f9',
-            scale: 1.2,          // 1.5 → 1.2：像素量再降 36%，长图也够清晰
             logging: false,
             imageTimeout: 3000,
             removeContainer: true,
-          }, extra)).then((canvas) => {
+          }, merged)).then((canvas) => {
             document.body.classList.remove('shot-simplify');
             resolve(canvas);
           }).catch((err) => {
@@ -16369,11 +16308,15 @@ const opts = { marked, session: cur };
       const totalW = el.offsetWidth;
       // 内容不高：一次渲染就够快
       if (totalH <= 1600) return await _renderCapture();
-      const SCALE = 1.2;
+      // B124：按总高度反推缩放，保证拼出来的长图不超 canvas 上限
+      const SCALE = _autoShotScale(totalH, totalW);
+      // 就算降到最低缩放还超上限，也把高度截到能存下的范围（并在最后提示）
+      const maxH = Math.min(totalH, Math.floor(SHOT_MAX_SIDE / SCALE));
+      const truncated = maxH < totalH;
       const CHUNK = 900;                                  // 每块约 900px（6~10 条消息）
       const strips = [];
-      for (let y = 0; y < totalH; y += CHUNK) {
-        const h = Math.min(CHUNK, totalH - y);
+      for (let y = 0; y < maxH; y += CHUNK) {
+        const h = Math.min(CHUNK, maxH - y);
         const c = await _renderCapture({ y, height: h, scale: SCALE });
         strips.push({ canvas: c, y, h });
         await new Promise(r => setTimeout(r, 16));        // 喘一口气，UI 可响应
@@ -16381,27 +16324,46 @@ const opts = { marked, session: cur };
       // 拼成一张长图
       const out = document.createElement('canvas');
       out.width = Math.round(totalW * SCALE);
-      out.height = Math.round(totalH * SCALE);
+      out.height = Math.round(maxH * SCALE);
       const ctx = out.getContext('2d');
       ctx.fillStyle = settings.darkMode ? '#0d0d0f' : '#f7f7f9';
       ctx.fillRect(0, 0, out.width, out.height);
       strips.forEach(s => {
         ctx.drawImage(s.canvas, 0, Math.round(s.y * SCALE));
       });
+      out._truncated = truncated;
+      out._shotScale = SCALE;
       return out;
     };
 
     const _saveCanvas = (canvas) => {
-      canvas.toBlob((blob) => {
-        if (!blob) { showToast('截图失败'); return; }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `留白_${Date.now()}.png`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-        showToast('截图已保存');
-      }, 'image/png');
+      // iOS 内存紧张时 toBlob 可能回 null，用 toDataURL 兜底再转一次（B124）
+      const _fallback = () => {
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = `留白_${Date.now()}.png`;
+          a.click();
+          showToast(canvas._truncated ? '截图已保存（内容太长，已截断）' : '截图已保存');
+        } catch (e) {
+          showToast('截图失败：内容太长，试试「自选最近 N 条」');
+        }
+      };
+      try {
+        canvas.toBlob((blob) => {
+          if (!blob) { _fallback(); return; }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `留白_${Date.now()}.png`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          showToast(canvas._truncated ? '截图已保存（内容太长，已截断）' : '截图已保存');
+        }, 'image/png');
+      } catch (e) {
+        _fallback();
+      }
     };
 
     const confirmScreenshot = () => {
@@ -21574,29 +21536,6 @@ const availableExportBoxes = computed(() => {
       if (_appBannerTimer) clearTimeout(_appBannerTimer);
       _appBannerTimer = setTimeout(() => { appBanner.show = false; }, 3400);
     };
-    // ===== 手机推送（B123）：页面不在前台时，把消息推到手机 =====
-    // 用 Bark（iOS 免费 App，公网 API），不需要自己搭服务器
-    // 地址形如：https://api.day.app/你的KEY
-    const _pushToPhone = (s, text) => {
-      try {
-        if (!settings.pushEnabled) return;
-        const base = (settings.pushUrl || '').trim().replace(/\/+$/, '');
-        if (!base) return;
-        const title = (s && s.name) ? s.name : '京京';
-        const body = String(text || '').replace(/<[^>]+>/g, '').slice(0, 100) || '发来一条消息';
-        const url = base + '/' + encodeURIComponent(title) + '/' + encodeURIComponent(body)
-          + '?group=' + encodeURIComponent('聊斋') + '&level=active';
-        fetch(url, { mode: 'no-cors' }).catch(() => {});
-      } catch (e) {}
-    };
-    const testPush = () => {
-      const base = (settings.pushUrl || '').trim().replace(/\/+$/, '');
-      if (!base) { showToast('先填 Bark 地址'); return; }
-      const url = base + '/' + encodeURIComponent('测试') + '/' + encodeURIComponent('推送接通了');
-      fetch(url, { mode: 'no-cors' })
-        .then(() => showToast('已发送，看手机通知'))
-        .catch(() => showToast('发送失败，检查地址'));
-    };
     const closeAppBanner = () => {
       appBanner.show = false;
       if (_appBannerTimer) { clearTimeout(_appBannerTimer); _appBannerTimer = null; }
@@ -25852,7 +25791,6 @@ CHATTY_KEYBOARD_ROWS, chattyKeyActive, CHATTY_PINYIN_BY_INITIAL,CHATTY_PUNCT_ROW
       rejectCall,
       callMinimized,
       appBanner, openAppBanner, closeAppBanner, appBannerTouch, onBannerTouchStart, onBannerTouchMove, onBannerTouchEnd,
-testPush,
       callSize,
       callSizes,
       callWindowStyle,
@@ -26238,12 +26176,6 @@ playOn,
 togglePlay,
 playOpen,
 togglePlayOpen,
-uiLayoutNow,
-uiCardClass,
-uiCardStyle,
-uiAvatarClass,
-uiNameClass,
-uiBadgeClass,
 PLAY_KEYS,
 PLAY_LABELS,
 settingsPanelTab,
