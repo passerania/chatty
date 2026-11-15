@@ -2582,6 +2582,52 @@ body { color: var(--color-text); }
                                     </div>
                                 </div>
 
+                                <!-- B211：发表情包（独立玩法） -->
+                                <div class="flex items-center justify-between px-3 py-2.5 mt-1.5 rounded-xl bg-bg/40 border border-border/40"
+                                     :class="playOpen['emote'] ? 'rounded-b-none border-b-0' : ''">
+                                    <button @click="togglePlay('emote')" class="flex-1 text-left"
+                                            :title="playOn('emote') ? '点一下＝关闭这个玩法' : '点一下＝开启这个玩法'">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-[14px] tracking-wider"
+                                              :class="playOn('emote') ? 'bg-text text-white' : 'text-muted'">发表情包</span>
+                                    </button>
+                                    <button @click="togglePlayOpen('emote')" class="p-1 text-muted hover:text-text transition-transform"
+                                            :class="playOpen['emote'] ? 'rotate-90' : ''"
+                                            :title="playOpen['emote'] ? '收起设置' : '展开设置'">
+                                        <i data-lucide="chevron-right" class="w-4 h-4 stroke-[1.5]"></i>
+                                    </button>
+                                </div>
+                                <div v-if="currentSession && currentSession.type !== 'group' && playOpen['emote']">
+                                    <div class="bg-bg/50 rounded-b-xl p-3 space-y-3 border border-t-0 border-border/40">
+                                        <div class="text-[11px] leading-relaxed px-1" style="color: var(--color-muted);">
+                                            数据源：<span style="color: var(--nav-icon-color);">我的表情库</span>（每个会话独立）<br>
+                                            怎么挑：从允许的分组里随机抽一张 → 满意骰 → 纯图片发出
+                                        </div>
+                                        <div>
+                                            <div class="flex justify-between text-[12px] text-muted mb-1">
+                                                <span>触发概率</span>
+                                                <span>{{ Math.round((getEmoteSettings(currentSession.id).prob || 0) * 100) }}%</span>
+                                            </div>
+                                            <input type="range" min="0" max="100"
+                                                   :value="(getEmoteSettings(currentSession.id).prob || 0) * 100"
+                                                   @input="e => { getEmoteSettings(currentSession.id).prob = e.target.value / 100; debouncedSave(); }"
+                                                   class="w-full" style="accent-color: var(--nav-icon-color);">
+                                        </div>
+                                        <div>
+                                            <div class="text-[12px] text-muted mb-1.5">TA 可以用哪些分组</div>
+                                            <div class="space-y-1">
+                                                <label v-for="g in emoteGroupsOf(currentSession)" :key="g"
+                                                       class="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-bg/60 cursor-pointer">
+                                                    <input type="checkbox" :checked="isEmoteGroupAllowed(g)"
+                                                           @change="toggleEmoteGroup(g)" class="accent-current">
+                                                    <span class="text-[13px] text-text flex-1 truncate">{{ g }}</span>
+                                                    <span class="text-[11px] text-muted">{{ emoteList(currentSession).filter(e => e.group === g).length }} 张</span>
+                                                </label>
+                                            </div>
+                                            <div class="text-[10px] text-muted/60 mt-1">全勾 = 都能用；一个都不勾 = 这个玩法不出图</div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- 涂鸦（B130） -->
                                 <div class="flex items-center justify-between px-3 py-2.5 mt-1.5 rounded-xl bg-bg/50 border border-border/30"
                                      :class="playOpen['draw'] ? 'rounded-b-none border-b-0' : ''">
@@ -5709,15 +5755,29 @@ body { color: var(--color-text); }
                     <div class="text-white text-sm font-medium tracking-wider">表情包</div>
                 </div>
                 <div class="redpacket-card-bottom" style="text-align:left;padding:12px;">
-                    <div class="text-[11px] text-muted mb-2">点击发送 · 长按删除</div>
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[11px] text-muted">
+                            {{ emoteManageMode ? '点击选中 / 再点取消' : '点击发送 · 长按删除' }}
+                        </div>
+                        <button @click="toggleEmoteManage"
+                                class="text-[11px] px-2 py-1 rounded-lg border border-border/50 text-text">
+                            {{ emoteManageMode ? '完成' : '管理' }}
+                        </button>
+                    </div>
                     <div class="grid grid-cols-4 gap-2 max-h-[260px] overflow-y-auto">
-                        <div v-for="(em, ei) in (currentSession.myEmotes || [])" :key="ei"
-                             @click="sendEmote(em)"
-                             @touchstart="emoteLongPressStart(ei)"
+                        <div v-for="em in emoteList(currentSession)" :key="em.id"
+                             @click="emoteManageMode ? toggleEmoteSelect(em.id) : sendEmote(em.url)"
+                             @touchstart="emoteManageMode ? null : emoteLongPressStart(em.id)"
                              @touchend="emoteLongPressEnd"
                              @touchmove="emoteLongPressEnd"
-                             class="aspect-square rounded-lg border border-border/40 overflow-hidden cursor-pointer bg-bg">
-                            <img :src="em" class="w-full h-full object-cover">
+                             class="aspect-square rounded-lg border overflow-hidden cursor-pointer relative"
+                             :class="(emoteManageMode && emoteSelected.includes(em.id)) ? 'border-text ring-2 ring-text/30' : 'border-border/40'">
+                            <img :src="em.url" class="w-full h-full object-cover">
+                            <div v-if="emoteManageMode" class="absolute top-1 right-1 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center"
+                                 :class="emoteSelected.includes(em.id) ? 'bg-text' : 'bg-black/30'">
+                                <i v-if="emoteSelected.includes(em.id)" data-lucide="check" class="w-2.5 h-2.5 stroke-[3] text-white"></i>
+                            </div>
+                            <div v-if="em.group && em.group !== '默认'" class="absolute bottom-0 left-0 right-0 text-[8px] text-white bg-black/40 px-1 truncate">{{ em.group }}</div>
                         </div>
                         <div v-if="!(currentSession.myEmotes || []).length" class="col-span-4 text-center text-[12px] text-muted/60 py-6">
                             <span>还没有表情包，去「字卡·私聊」书册传几张，或点下面添加</span>
@@ -5727,6 +5787,48 @@ body { color: var(--color-text); }
                         <i data-lucide="image-plus" class="w-4 h-4 stroke-[1.5]"></i> 添加表情包
                         <input type="file" accept="image/*" multiple class="hidden" @change="handleEmoteAdd">
                     </label>
+
+                    <!-- B212：管理模式底部操作 -->
+                    <div v-if="emoteManageMode" class="mt-3 flex gap-2">
+                        <button @click="doEmoteDelete" :disabled="!emoteSelected.length"
+                                class="flex-1 py-2 rounded-lg border border-red-400/40 text-red-500 text-[13px] disabled:opacity-40">
+                            删除({{ emoteSelected.length }})
+                        </button>
+                        <button @click="emoteMoveShow = true; emoteMoveTarget = ''; emoteMoveNewName = '';"
+                                :disabled="!emoteSelected.length"
+                                class="flex-1 py-2 rounded-lg bg-text text-white text-[13px] disabled:opacity-40">
+                            移到分组
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- B212：表情分组移动弹窗 -->
+        <div v-if="emoteMoveShow" class="redpacket-overlay" style="z-index:290;" @click.self="emoteMoveShow = false">
+            <div class="redpacket-card" style="width:300px;">
+                <div class="redpacket-card-top" style="padding-bottom:12px;">
+                    <div class="text-white text-sm font-medium tracking-wider">移动 {{ emoteSelected.length }} 张表情</div>
+                </div>
+                <div class="redpacket-card-bottom" style="text-align:left;padding:12px;">
+                    <div class="text-[12px] text-muted mb-1.5">已有分组</div>
+                    <div class="space-y-1 max-h-[160px] overflow-y-auto mb-3">
+                        <button v-for="g in emoteGroupsOf(currentSession)" :key="g"
+                                @click="emoteMoveTarget = (emoteMoveTarget === g ? '' : g); emoteMoveNewName = '';"
+                                class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left"
+                                :class="emoteMoveTarget === g ? 'border-text bg-bg' : 'border-border/40'">
+                            <span class="flex-1 text-[13px] truncate">{{ g }}</span>
+                            <span class="text-[11px] text-muted">{{ emoteList(currentSession).filter(e => e.group === g).length }} 张</span>
+                        </button>
+                    </div>
+                    <div class="text-[12px] text-muted mb-1.5">或新建分组</div>
+                    <input v-model="emoteMoveNewName" @input="emoteMoveTarget = ''"
+                           placeholder="输入新分组名…"
+                           class="w-full bg-bg border border-border/40 rounded-lg px-3 py-2 text-[13px]">
+                    <div class="flex gap-2 mt-3">
+                        <button @click="emoteMoveShow = false" class="flex-1 py-2 rounded-lg border border-border text-[13px] text-muted">取消</button>
+                        <button @click="doEmoteMove" class="flex-1 py-2 rounded-lg bg-text text-white text-[13px]">移动</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -15384,12 +15486,13 @@ const _runReplyPlan = (cur, plan, preDelayMs) => {
 
 // ===== 回复玩法（手法）独立开关（B96）=====
 // 老板拍板：取消旧的「方法0/1/2/4」那组开关，改成按玩法开关；全默认开启
-const PLAY_KEYS = ['main', 'concat', 'compose', 'retract', 'pinyin', 'card', 'ja', 'dict', 'tease', 'tagcard', 'draw'];
+const PLAY_KEYS = ['main', 'concat', 'compose', 'retract', 'pinyin', 'card', 'ja', 'dict', 'tease', 'emote', 'tagcard', 'draw'];
 const PLAY_LABELS = {
     main: '翻页选字卡', concat: '拼接回复', compose: '梦角自由造句', retract: '撤回',
     pinyin: '拼音自由打字', card: '拼音选字卡', ja: '日语笔谈', dict: '词典拼字', tease: '吐槽',
     draw: '涂鸦',
     tagcard: '标签选卡',
+    emote: '发表情包',
 };
 // 玩法开关：按会话独立（B125：以前存在全局 settings 里，改一个会话会连累所有会话）
 // 读取顺序：当前会话自己的设置 → 全局默认 → 默认开
@@ -15624,6 +15727,7 @@ const applyPlayTogglesToAll = () => {
                 case 'draw': return (getDrawSettings(s.id).prob || 0) * 200;
                 case 'tease': return (getTeaseSettings(s.id).prob || 0) * 200;
                 case 'tagcard': return (getTagCardSettings(s.id).prob || 0) * 200;
+                case 'emote': return (getEmoteSettings(s.id).prob || 0) * 200;
                 // concat 是主回复的参数、card 是附加玩法，都不占轮次
                 default: return 0;
             }
@@ -15677,6 +15781,7 @@ const applyPlayTogglesToAll = () => {
             case 'draw': return !!(await triggerDrawingPlay(s, { skipEntry: true }));
             case 'tease': return !!_runTeaseOnce(s, plan);
             case 'tagcard': return !!triggerTagCardPlay(s, { skipEntry: true });
+            case 'emote': return !!triggerEmotePlay(s, { skipEntry: true });
             default: return false;
         }
     };
@@ -15739,6 +15844,154 @@ const applyPlayTogglesToAll = () => {
             try { delete typingSessions[id]; } catch (e) {}
         }, d);
     };
+
+    // ===== B211：表情包（统一数据源 = 我的表情库）=====
+    // 兼容两种格式：旧的字符串数组 / 新的 {id,url,group} 对象数组
+    const emoteList = (s) => {
+        const arr = (s && Array.isArray(s.myEmotes)) ? s.myEmotes : [];
+        const out = [];
+        arr.forEach((e, i) => {
+            if (!e) return;
+            if (typeof e === "string") { out.push({ id: "e" + i, url: e, group: "默认" }); return; }
+            if (e.url) out.push({ id: e.id || ("e" + i), url: e.url, group: e.group || "默认" });
+        });
+        return out;
+    };
+
+    // 这个会话里所有表情分组名
+    const emoteGroupsOf = (s) => {
+        const set = new Set();
+        emoteList(s).forEach((e) => set.add(e.group || "默认"));
+        if (!set.size) set.add("默认");
+        return [...set];
+    };
+
+    // 表情玩法设置（每会话）
+    const emoteSettingsMap = reactive({});
+    const getEmoteSettings = (sessionId) => {
+        if (!emoteSettingsMap[sessionId]) {
+            emoteSettingsMap[sessionId] = { prob: 0.12, allowedGroups: null };
+        }
+        return emoteSettingsMap[sessionId];
+    };
+
+    // 玩法：发一张纯表情包
+    const triggerEmotePlay = (s, opts = {}) => {
+        if (!s) return false;
+        if (!playOn("emote")) return false;
+        const cfg = getEmoteSettings(s.id);
+        if (cfg.prob <= 0) return false;
+        if (!opts.skipEntry && Math.random() >= cfg.prob) return false;
+
+        // 只看「允许的分组」（null = 全部允许）
+        const allowed = Array.isArray(cfg.allowedGroups) ? cfg.allowedGroups : null;
+        const all = emoteList(s);
+        const pool = allowed ? all.filter((e) => allowed.includes(e.group)) : all;
+        if (!pool.length) return false;
+
+        // 满意骰：最多抽 3 次
+        let picked = null;
+        for (let t = 0; t < 3; t++) {
+            const c = pool[Math.floor(Math.random() * pool.length)];
+            if (_rollJudgment(45, 65)) { picked = c; break; }
+            _systemPulse(1);
+        }
+        if (!picked) picked = pool[Math.floor(Math.random() * pool.length)];
+        if (!picked) return false;
+
+        // 纯图片发送（先亮输入中）
+        _delayedSend(s, "", { session: s, image: picked.url, emoteOnly: true }, 800, 1600);
+        return true;
+    };
+
+    // 某分组是否允许 TA 用（null = 全部允许）
+    const isEmoteGroupAllowed = (g) => {
+        const s = currentSession.value;
+        if (!s) return true;
+        const cfg = getEmoteSettings(s.id);
+        if (!Array.isArray(cfg.allowedGroups)) return true;
+        return cfg.allowedGroups.includes(g);
+    };
+    const toggleEmoteGroup = (g) => {
+        const s = currentSession.value;
+        if (!s) return;
+        const cfg = getEmoteSettings(s.id);
+        const all = emoteGroupsOf(s);
+        let cur = Array.isArray(cfg.allowedGroups) ? cfg.allowedGroups.slice() : all.slice();
+        if (cur.includes(g)) cur = cur.filter((x) => x !== g);
+        else cur.push(g);
+        cfg.allowedGroups = cur;
+        debouncedSave();
+    };
+
+    // ===== B212：表情库分组管理 =====
+    const emoteManageMode = ref(false);
+    const emoteSelected = ref([]);
+    const emoteMoveShow = ref(false);
+    const emoteMoveTarget = ref("");
+    const emoteMoveNewName = ref("");
+
+    const toggleEmoteManage = () => {
+        emoteManageMode.value = !emoteManageMode.value;
+        emoteSelected.value = [];
+    };
+    const toggleEmoteSelect = (id) => {
+        const cur = emoteSelected.value.slice();
+        const i = cur.indexOf(id);
+        if (i >= 0) cur.splice(i, 1);
+        else cur.push(id);
+        emoteSelected.value = cur;
+    };
+
+    // 把 myEmotes 统一成对象数组（写入前调用）
+    const _ensureEmoteObjs = (s) => {
+        if (!s) return;
+        if (!Array.isArray(s.myEmotes)) s.myEmotes = [];
+        s.myEmotes = s.myEmotes.map((e, i) => {
+            if (!e) return null;
+            if (typeof e === "string") return { id: "e" + i, url: e, group: "默认" };
+            return { id: e.id || ("e" + i), url: e.url, group: e.group || "默认" };
+        }).filter(Boolean);
+    };
+
+    // 批量移动选中的表情到分组（或新建）
+    const doEmoteMove = () => {
+        const s = currentSession.value;
+        if (!s) return;
+        _ensureEmoteObjs(s);
+        const ids = emoteSelected.value.slice();
+        if (!ids.length) return;
+        const newName = String(emoteMoveNewName.value || "").trim();
+        const targetGroup = newName || emoteMoveTarget.value;
+        if (!targetGroup) { showToast("请选择分组，或输入新分组名"); return; }
+        let n = 0;
+        s.myEmotes.forEach((e) => {
+            if (e && ids.includes(e.id)) { e.group = targetGroup; n++; }
+        });
+        emoteSelected.value = [];
+        emoteMoveShow.value = false;
+        emoteMoveTarget.value = "";
+        emoteMoveNewName.value = "";
+        debouncedSave();
+        showToast("已移动 " + n + " 张到「" + targetGroup + "」");
+    };
+
+    // 批量删除选中的表情
+    const doEmoteDelete = () => {
+        const s = currentSession.value;
+        if (!s) return;
+        _ensureEmoteObjs(s);
+        const ids = emoteSelected.value.slice();
+        if (!ids.length) return;
+        const before = s.myEmotes.length;
+        s.myEmotes = s.myEmotes.filter((e) => !ids.includes(e.id));
+        const n = before - s.myEmotes.length;
+        emoteSelected.value = [];
+        debouncedSave();
+        showToast("已删除 " + n + " 张表情");
+    };
+
+
 
     // 引用逻辑（B181）：本轮自动挑中的引用，挂到下一条发出去的消息上
     let _pendingAutoQuote = null;
@@ -27869,6 +28122,9 @@ isMuted,
 // 长按消息菜单
       msgMenu, pendingQuote, openMsgMenu, closeMsgMenu,
       isCollected, collectMsg, uncollectMsg, toggleCollect, msgMenuCollect, _collectionsOf,
+      emoteList, emoteGroupsOf, getEmoteSettings, triggerEmotePlay, emoteSettingsMap, isEmoteGroupAllowed, toggleEmoteGroup,
+      emoteManageMode, emoteSelected, emoteMoveShow, emoteMoveTarget, emoteMoveNewName,
+      toggleEmoteManage, toggleEmoteSelect, doEmoteMove, doEmoteDelete, _ensureEmoteObjs,
       batchMove, openBatchMove, batchMoveGroups, doBatchMove,
       onyomiTableOpen, onyomiSearch, onyomiRowOpen, onyomiCharOpen, onyomiStats, onyomiGroups,
       toggleOnyomiRow, toggleOnyomiChar, onyomiList,
