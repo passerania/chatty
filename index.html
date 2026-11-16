@@ -2166,7 +2166,7 @@ body { color: var(--color-text); }
                 感应没中 → 走读音分支；读音分支里再按「槽位」比例决定拼句还是随机拼字。
             </div>
         <!-- B207：读音表入口（全局共享） -->
-        <button @click="onyomiTableOpen = true"
+        <button @click="closeOtherOverlays('onyomi'); onyomiTableOpen = true"
                 class="w-full py-2 rounded-lg border border-border text-[13px] text-text hover:bg-bg/60 transition-colors flex items-center justify-center gap-1.5">
             <i data-lucide="layers" class="w-3.5 h-3.5 stroke-[1.5]"></i>
             查看读音表（全局共享）
@@ -2927,7 +2927,7 @@ body { color: var(--color-text); }
             <!-- 字卡（原语料库） -->
             <div v-else-if="currentView === 'library'" key="library" class="absolute inset-0 flex flex-col z-20 bg-transparent">
                 <header class="h-14 flex items-center justify-between px-4 border-b border-border shrink-0 bg-surface relative">
-    <button @click="switchView('home')" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
+    <button @click="libraryBack()" class="p-2 -ml-2 text-text hover:opacity-60"><i data-lucide="chevron-left" class="w-5 h-5 stroke-[1.5]"></i></button>
     <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[14px] font-medium tracking-widest serif-text whitespace-nowrap">{{ currentSession?.name || '' }} 字卡</span>
     <button @click="libPanelOpen = true" class="p-2 text-muted hover:text-text" title="更多功能">
         <i data-lucide="more-horizontal" class="w-5 h-5 stroke-[1.5]"></i>
@@ -3710,6 +3710,17 @@ body { color: var(--color-text); }
                                     </div>
                                     <input type="range" min="0" max="100" :value="(settings.mainTypingProb ?? 0.2) * 100" @input="e => { settings.mainTypingProb = e.target.value / 100; debouncedSave(); }" class="w-full" style="accent-color: var(--nav-icon-color);">
                                     <div class="text-[11px] text-muted/60 leading-relaxed mt-1">每次回复前掷一次；中了就按"拼音自由组合"（声母→韵母→字）直接发一条，消息带角标。0 = 关闭</div>
+                                    <!-- B215：拼音自由拼字最多打几个字 -->
+                                    <div class="mt-3 pt-3 border-t border-border/40">
+                                        <div class="flex items-center justify-between mb-1">
+                                            <span class="text-[13px] text-text">拼音自由拼字最多几个字</span>
+                                            <span class="text-[11px] text-muted tabular-nums">{{ settings.typingMaxChars ?? 20 }} 字</span>
+                                        </div>
+                                        <input type="range" min="1" max="60" :value="settings.typingMaxChars ?? 20"
+                                               @input="e => { settings.typingMaxChars = Number(e.target.value); debouncedSave(); }"
+                                               class="w-full" style="accent-color: var(--nav-icon-color);">
+                                        <div class="text-[11px] text-muted/60 leading-relaxed mt-1">拼音自由组合整条消息的字数上限（1~60）。</div>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -5794,7 +5805,7 @@ body { color: var(--color-text); }
                                 class="flex-1 py-2 rounded-lg border border-red-400/40 text-red-500 text-[13px] disabled:opacity-40">
                             删除({{ emoteSelected.length }})
                         </button>
-                        <button @click="emoteMoveShow = true; emoteMoveTarget = ''; emoteMoveNewName = '';"
+                        <button @click="closeOtherOverlays('emoteMove'); emoteMoveShow = true; emoteMoveTarget = ''; emoteMoveNewName = '';"
                                 :disabled="!emoteSelected.length"
                                 class="flex-1 py-2 rounded-lg bg-text text-white text-[13px] disabled:opacity-40">
                             移到分组
@@ -11379,6 +11390,7 @@ const thinkingSessions = reactive({}); // B152：正在「选手法/抽玩法」
     const _cloneGrammarTplDefault = (k) => (GRAMMAR_TPL_DEFAULT[k] || []).slice();
     const settings = reactive({
       maxReplyRounds: 5,      // B206：一次最多连发几条（回复设置里可调）
+      typingMaxChars: 20,     // B215：拼音自由拼字最多打几个字
       darkMode: false,
       uiLayout: 'default',    // 排版引擎（B120）：'default' 原有 / 'varia' 瓦利亚机能风 / 'vongola' 彭格列信笺风
       visualStyle: '',        // 视觉方案：''=默认 / frosted=磨砂玻璃 / glass=毛玻璃 / clear=透明 / wechat=仿微信
@@ -12074,6 +12086,7 @@ const CARD_POS_LIST = ['', '人称代词','物主代词','时间','肯定词','�
 const CARD_POS_SHORT = { '':'', 人称代词:'人称', 物主代词:'物主', 时间:'时', 肯定词:'肯', 否定词:'否', 副词:'副', 连词:'连', 叹词:'叹', 动词:'动', 及物动词:'及物', 不及物动词:'不及物', 情态动词:'情态', 介词:'介', 助词:'助', 疑问词:'疑', 名词:'名', 形容词:'形', 指示代词:'指', 量词:'量', 程度词:'程', 语气词:'语' };
 const posPicker = reactive({ show: false, reply: null, draft: '' });
 const openPosPicker = (reply) => {
+    closeOtherOverlays("posPicker");
     if (!reply) return;
     posPicker.reply = reply;
     posPicker.draft = reply.pos || '';
@@ -21964,6 +21977,8 @@ const _rollYes = (base) => {
 };
 
 const _makeFreeComposeText = (s) => {
+    // B215：总字数上限（设置里可调，默认 20）
+    const _maxChars = Math.max(1, Math.min(60, Number(settings.typingMaxChars) || 20));
     const MAX_SEGS = 5;
     const SEG_MIN = 2, SEG_MAX = 5;
     const MAX_SEND_RETRY = 2;     // 确认发送不满意 → 重来几次
@@ -21999,10 +22014,14 @@ const _makeFreeComposeText = (s) => {
     // 每段：骰段长 → 每字骰（声母/韵母/选字/退格）→ 骰标点 → 骰是否继续说
     const buildOnce = () => {
         const segments = [];
+    let _segChars = 0;   // B215：已累计的字数
         for (let segIdx = 0; segIdx < MAX_SEGS; segIdx++) {
             // 系统用户"蓄能"：想表达某个意思时先脉冲 1–2 次（真人无路径触发）
             if (Math.random() < 0.3) _systemPulse(1 + Math.floor(Math.random() * 2));
             const len = SEG_MIN + Math.floor(Math.random() * (SEG_MAX - SEG_MIN + 1));   // 骰：这段几字
+        // B215：这段会超出总字数上限就停
+        if (_segChars + len > _maxChars) break;
+        _segChars += len;
             const units = [];
             for (let i = 0; i < len; i++) {
                 let u = _rollOneUnit();                                  // 骰：声母 + 韵母 + 选字（3 次）
@@ -22804,6 +22823,7 @@ if (window.lucide) lucide.createIcons();
 // ===== B209：批量移动字卡到分组 =====
 const batchMove = reactive({ show: false, targetGroupId: "", newName: "" });
 const openBatchMove = () => {
+    closeOtherOverlays("batchMove");
     if (!selectedRepliesArr.value.length) return;
     batchMove.targetGroupId = "";
     batchMove.newName = "";
@@ -26282,7 +26302,24 @@ const monthlyBudgetRemain = (monthStr) => {
       debouncedSave();
     };
 
+    // B213：字卡页返回来源
+    let _libraryFromView = "home";
+
+    // B214：打开某弹窗前先关掉其它（防止高层弹窗挡住低层）
+    const closeOtherOverlays = (keep) => {
+        try {
+            if (keep !== "posPicker" && posPicker) posPicker.show = false;
+            if (keep !== "batchMove" && batchMove) batchMove.show = false;
+            if (keep !== "onyomi" && onyomiTableOpen) onyomiTableOpen.value = false;
+            if (keep !== "emoteMove" && emoteMoveShow) emoteMoveShow.value = false;
+            if (keep !== "emotePicker" && emotePickerOpen) emotePickerOpen.value = false;
+        } catch (e) {}
+    };
+
+
     const switchView = (v) => {
+    // B213：进字卡页时记住来源视图
+    if (v === "library" && currentView.value !== "library") _libraryFromView = currentView.value;
       if (v === 'chat') {
         if (!currentSession.value) return;
         getActiveCalls().forEach((s) => {
@@ -26303,6 +26340,13 @@ const monthlyBudgetRemain = (monthStr) => {
       requestAnimationFrame(() => {
         if (window.lucide) lucide.createIcons();
       });
+    };
+
+    // B213：字卡页返回（回来源视图）
+    const libraryBack = () => {
+        const back = _libraryFromView || "home";
+        if (back === "chat" && !currentSession.value) { switchView("home"); return; }
+        switchView(back);
     };
 
     const formatTime = (ts) => {
@@ -28123,6 +28167,8 @@ isMuted,
       msgMenu, pendingQuote, openMsgMenu, closeMsgMenu,
       isCollected, collectMsg, uncollectMsg, toggleCollect, msgMenuCollect, _collectionsOf,
       emoteList, emoteGroupsOf, getEmoteSettings, triggerEmotePlay, emoteSettingsMap, isEmoteGroupAllowed, toggleEmoteGroup,
+      closeOtherOverlays,
+      libraryBack,
       emoteManageMode, emoteSelected, emoteMoveShow, emoteMoveTarget, emoteMoveNewName,
       toggleEmoteManage, toggleEmoteSelect, doEmoteMove, doEmoteDelete, _ensureEmoteObjs,
       batchMove, openBatchMove, batchMoveGroups, doBatchMove,
